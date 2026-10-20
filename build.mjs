@@ -4,6 +4,8 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
+import { deflateRawSync } from 'node:zlib';
+
 const root = path.dirname(fileURLToPath(import.meta.url));
 const entry = path.join(root, 'src', 'main.js');
 const htmlPath = path.join(root, 'index.html');
@@ -11,11 +13,13 @@ const outDir = path.join(root, 'dist');
 const outPath = path.join(outDir, 'index.html');
 const PHASER_TAG = '<script src="https://cdn.jsdelivr.net/npm/phaser@3.70.0/dist/phaser.min.js"></script>';
 const DEV_TAG = '<script type="module" src="./src/main.js"></script>';
-const LIMIT = 100000;
+const LIMIT = 50000;
 
 const result = await build({
   entryPoints: [entry],
   bundle: true,
+  minify: true,
+  treeShaking: true,
   write: false,
   format: 'iife',
   target: 'es2020',
@@ -25,7 +29,14 @@ const result = await build({
 
 const source = result.outputFiles[0].text;
 const minified = await minify(source, {
-  compress: { passes: 3, unsafe: true, pure_getters: true },
+  compress: {
+    passes: 4,
+    unsafe: true,
+    pure_getters: true,
+    drop_console: true,
+    booleans_as_integers: true,
+    ecma: 2020
+  },
   mangle: { toplevel: true },
   format: { comments: false, ascii_only: true }
 });
@@ -51,7 +62,10 @@ template = template.replace(/<style>([\s\S]*?)<\/style>/, (_, css) => {
 });
 template = template.replace(/<!--[\s\S]*?-->/g, '').replace(/>\s+</g, '><');
 
-let html = template.replace(DEV_TAG, `<script>${minified.code}</script>`);
+const compressed = deflateRawSync(Buffer.from(minified.code, 'utf8'));
+const b64 = compressed.toString('base64');
+const runtimeBootstrap = `<script>(async()=>{const b=Uint8Array.from(atob("${b64}"),c=>c.charCodeAt(0)),s=new Response(b).body.pipeThrough(new DecompressionStream("deflate-raw")),c=await new Response(s).text();(0,eval)(c);})();</script>`;
+let html = template.replace(DEV_TAG, runtimeBootstrap);
 
 const ownHtml = html.replace(PHASER_TAG, '');
 const ownBytes = Buffer.byteLength(ownHtml, 'utf8');

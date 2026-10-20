@@ -287,3 +287,65 @@ test('Spawn de Jefes: aparecen en el extremo opuesto al jugador', async () => {
   assert.ok(boss3.y < 350, 'DragonBoss debe volar en el extremo superior');
   assert.ok(Math.hypot(boss3.x - player.x, boss3.y - player.y) > 350, 'DragonBoss debe iniciar a distancia segura del jugador');
 });
+
+test('Visión de Túnel: culling lógico de visibilidad para enemigos en el punto ciego', async () => {
+  globalThis.Phaser = {
+    Scene: class {},
+    BlendModes: { ADD: 1, SCREEN: 2 },
+    Math: {
+      Angle: {
+        Wrap(a) {
+          let ang = a % (Math.PI * 2);
+          if (ang < -Math.PI) ang += Math.PI * 2;
+          if (ang > Math.PI) ang -= Math.PI * 2;
+          return ang;
+        }
+      }
+    }
+  };
+  const { GameScene } = await import('../src/scenes.js');
+
+  // Simular GameScene con culling
+  const scene = Object.create(GameScene.prototype);
+  scene.vignette = { tunnelVision: true };
+  scene.player = {
+    x: 400,
+    y: 300,
+    dead: false,
+    spr: { rotation: 0 } // Apunta a la derecha (0 rad)
+  };
+
+  let enemyBehindVisible = true;
+  let enemyFrontVisible = false;
+  let enemyCloseVisible = false;
+
+  scene.enemies = {
+    pools: {
+      bouncer: [
+        // 1. Enemigo detrás (x=200, y=300, dist=200 > 80): debe ser INVISIBLE
+        {
+          active: true, x: 200, y: 300,
+          spr: { setVisible(v) { enemyBehindVisible = v; } }
+        },
+        // 2. Enemigo al frente (x=600, y=300, dist=200 > 80): debe ser VISIBLE
+        {
+          active: true, x: 600, y: 300,
+          spr: { setVisible(v) { enemyFrontVisible = v; } }
+        },
+        // 3. Enemigo detrás pero pegado a la nave (x=370, y=300, dist=30 <= 80): debe ser VISIBLE por proximidad
+        {
+          active: true, x: 370, y: 300,
+          spr: { setVisible(v) { enemyCloseVisible = v; } }
+        }
+      ]
+    }
+  };
+  scene.ebullets = { items: [] };
+  scene.bosses = { activeBoss: null };
+
+  scene.updateTunnelVisionCulling();
+
+  assert.equal(enemyBehindVisible, false, 'El enemigo a la espalda debe estar oculto con setVisible(false)');
+  assert.equal(enemyFrontVisible, true, 'El enemigo al frente debe ser visible');
+  assert.equal(enemyCloseVisible, true, 'El enemigo dentro del radio de seguridad debe ser visible');
+});

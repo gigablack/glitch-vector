@@ -473,6 +473,7 @@ export class GameScene extends Phaser.Scene {
       this.collide();
       this.checkWaveClear();
       this.updateTelegraph();
+      this.updateTunnelVisionCulling();
     }
 
     this.pulseCube();
@@ -494,6 +495,54 @@ export class GameScene extends Phaser.Scene {
     this.inputState.x = x;
     this.inputState.y = y;
     return this.inputState;
+  }
+
+  updateTunnelVisionCulling() {
+    const isBlind = this.vignette && this.vignette.tunnelVision && this.player && !this.player.dead;
+    const px = this.player ? this.player.x : 0;
+    const py = this.player ? this.player.y : 0;
+    const rot = (this.player && this.player.spr) ? this.player.spr.rotation : 0;
+    const halfCone = (120 * Math.PI) / 360; // 60 deg
+    const innerR2 = 80 * 80;
+
+    const checkVisible = (x, y) => {
+      if (!isBlind) return true;
+      const dx = x - px;
+      const dy = y - py;
+      if (dx * dx + dy * dy <= innerR2) return true;
+      const diff = Math.abs(Phaser.Math.Angle.Wrap(Math.atan2(dy, dx) - rot));
+      return diff <= halfCone;
+    };
+
+    // 1. Regular enemies
+    if (this.enemies && this.enemies.pools) {
+      for (const pool of Object.values(this.enemies.pools)) {
+        for (const e of pool) {
+          if (e.active) e.spr.setVisible(checkVisible(e.x, e.y));
+        }
+      }
+    }
+
+    // 2. Enemy bullets
+    if (this.ebullets && this.ebullets.items) {
+      for (const b of this.ebullets.items) {
+        if (b.active) b.spr.setVisible(checkVisible(b.spr.x, b.spr.y));
+      }
+    }
+
+    // 3. Active boss
+    const boss = this.bosses ? this.bosses.activeBoss : null;
+    if (boss) {
+      if (boss.spr) boss.spr.setVisible(checkVisible(boss.spr.x, boss.spr.y));
+      if (boss.segments) {
+        for (const seg of boss.segments) {
+          if (seg.spr) seg.spr.setVisible(checkVisible(seg.x, seg.y));
+        }
+      }
+      if (boss.tailSpr) boss.tailSpr.setVisible(checkVisible(boss.tailSpr.x, boss.tailSpr.y));
+      if (boss.leftWing) boss.leftWing.setVisible(checkVisible(boss.leftWing.x, boss.leftWing.y));
+      if (boss.rightWing) boss.rightWing.setVisible(checkVisible(boss.rightWing.x, boss.rightWing.y));
+    }
   }
 
   updateFiring() {

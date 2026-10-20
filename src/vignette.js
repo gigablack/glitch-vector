@@ -138,8 +138,8 @@ export class VignetteSystem {
       });
     }
 
-    // Shroud rear blind zone in cyber darkness
-    this.graphics.fillStyle(0x020308, 0.94);
+    // Shroud rear blind zone in total pitch darkness
+    this.graphics.fillStyle(0x000000, 1.0);
     this.graphics.beginPath();
     this.graphics.moveTo(points[0].x, points[0].y);
     for (let i = 1; i < points.length; i++) {
