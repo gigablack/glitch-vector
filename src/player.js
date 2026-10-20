@@ -11,6 +11,18 @@ export class Player {
     this.speedMult = 1;
     this.maxBulletsBonus = 0;
     this.fireCdMult = 1;
+
+    // Tactical weapon profiles & 3-shot magazine cooldown
+    this.magazineSize = 3;
+    this.magazineShots = 3;
+    this.reloadTime = 450;
+    this.reloadCooldown = 0;
+    this.fireMode = 'single';
+    this.bulletBounces = 0;
+    this.bulletPierce = false;
+    this.burstRemaining = 0;
+    this.burstTimer = 0;
+
     this.reset();
   }
 
@@ -22,6 +34,10 @@ export class Player {
     this.shields = this.maxShields || CFG.PLAYER.shields;
     this.invuln = 0;
     this.fireCd = 0;
+    this.magazineShots = this.magazineSize;
+    this.reloadCooldown = 0;
+    this.burstRemaining = 0;
+    this.burstTimer = 0;
     this.dead = false;
     this.spr.setPosition(this.x, this.y)
       .setVisible(true)
@@ -34,6 +50,11 @@ export class Player {
     this.speedMult = modifiers.speedMult || 1;
     this.maxBulletsBonus = modifiers.maxBulletsBonus || 0;
     this.fireCdMult = modifiers.fireCdMult || 1;
+    this.fireMode = modifiers.fireMode || 'single';
+    this.bulletBounces = modifiers.bulletBounces || 0;
+    this.bulletPierce = !!modifiers.bulletPierce;
+    this.magazineSize = modifiers.magazineSize || 3;
+
     if (modifiers.maxShields && modifiers.maxShields !== this.maxShields) {
       const diff = modifiers.maxShields - this.maxShields;
       this.maxShields = modifiers.maxShields;
@@ -50,6 +71,13 @@ export class Player {
 
   update(dt, input, aimX, aimY, obstacles = null, inverted = false) {
     this.fireCd = Math.max(0, this.fireCd - dt * 1000);
+    if (this.reloadCooldown > 0) {
+      this.reloadCooldown = Math.max(0, this.reloadCooldown - dt * 1000);
+      if (this.reloadCooldown <= 0) {
+        this.magazineShots = this.magazineSize;
+      }
+    }
+
     if (this.dead) {
       this.spr.setVisible(false);
       return;
@@ -64,13 +92,12 @@ export class Player {
 
     // Deadzone of 8px to prevent jitter under mouse cursor
     if (dist > 8) {
-      // Smooth acceleration ramp when close to cursor
       const ramp = Math.min(1, (dist - 8) / 45);
       ax = (dx / dist) * ramp;
       ay = (dy / dist) * ramp;
     }
 
-    // Keyboard fallback / hybrid additive if player presses keys
+    // Keyboard fallback if pressed
     if (input && (input.x !== 0 || input.y !== 0)) {
       const kLen = Math.hypot(input.x, input.y) || 1;
       ax = input.x / kLen;
@@ -114,7 +141,6 @@ export class Player {
       this.vy = Math.min(0, this.vy);
     }
 
-    // Resolve collision against dynamic obstacles or default cube
     if (obstacles && obstacles.resolvePlayer) {
       obstacles.resolvePlayer(this);
     } else {
@@ -122,7 +148,6 @@ export class Player {
     }
 
     this.spr.setPosition(this.x, this.y);
-    // Ship always aims directly at the mouse cursor
     this.spr.setRotation(Math.atan2(aimY - this.y, aimX - this.x));
 
     if (this.invuln > 0) {
@@ -195,11 +220,20 @@ export class Player {
 
   canFire(activeBullets) {
     const maxB = CFG.PLAYER.maxBullets + this.maxBulletsBonus;
-    return !this.dead && this.fireCd <= 0 && activeBullets < maxB;
+    return !this.dead &&
+      this.fireCd <= 0 &&
+      this.reloadCooldown <= 0 &&
+      this.magazineShots > 0 &&
+      activeBullets < maxB;
   }
 
   markFired() {
     this.fireCd = CFG.PLAYER.fireCd * this.fireCdMult;
+    this.magazineShots--;
+    if (this.magazineShots <= 0) {
+      // 3-shot cooldown reload period
+      this.reloadCooldown = this.reloadTime * (this.fireCdMult || 1);
+    }
   }
 
   get muzzleX() {

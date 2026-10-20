@@ -3,8 +3,10 @@ import { reflectAABB } from './rules.js';
 
 export class BulletPool {
   constructor(scene) {
+    this.scene = scene;
     this.items = [];
-    for (let i = 0; i < POOLS.playerBullets; i++) {
+    const poolSize = Math.max(24, POOLS.playerBullets);
+    for (let i = 0; i < poolSize; i++) {
       this.items.push({
         spr: scene.add.sprite(0, 0, 'bullet')
           .setActive(false)
@@ -14,23 +16,32 @@ export class BulletPool {
         active: false,
         vx: 0,
         vy: 0,
-        life: 0
+        life: 0,
+        bounces: 0,
+        pierce: false,
+        prevX: 0,
+        prevY: 0
       });
     }
   }
 
-  spawn(x, y, angle) {
+  spawn(x, y, angle, speedMult = 1, bounces = 0, pierce = false) {
     const item = this.items.find((entry) => !entry.active);
     if (!item) return false;
     item.active = true;
     item.life = CFG.BULLET.life;
-    item.vx = Math.cos(angle) * CFG.BULLET.speed;
-    item.vy = Math.sin(angle) * CFG.BULLET.speed;
+    const speed = CFG.BULLET.speed * speedMult;
+    item.vx = Math.cos(angle) * speed;
+    item.vy = Math.sin(angle) * speed;
+    item.bounces = bounces;
+    item.pierce = pierce;
+    item.prevX = x;
+    item.prevY = y;
     item.spr.setPosition(x, y)
       .setActive(true)
       .setVisible(true)
       .setAlpha(1)
-      .setScale(1)
+      .setScale(pierce ? 1.4 : 1)
       .setRotation(angle);
     return true;
   }
@@ -45,34 +56,52 @@ export class BulletPool {
       const steps = Math.max(1, Math.ceil(distance / 8));
       const step = dt / steps;
 
+      let released = false;
+
       for (let i = 0; i < steps; i++) {
         spr.x += item.vx * step;
         spr.y += item.vy * step;
 
-        if (spr.x < play.x + CFG.BULLET.r) {
-          spr.x = play.x + CFG.BULLET.r;
-          item.vx = Math.abs(item.vx);
-        } else if (spr.x > play.x + play.w - CFG.BULLET.r) {
-          spr.x = play.x + play.w - CFG.BULLET.r;
-          item.vx = -Math.abs(item.vx);
-        }
-        if (spr.y < play.y + CFG.BULLET.r) {
-          spr.y = play.y + CFG.BULLET.r;
-          item.vy = Math.abs(item.vy);
-        } else if (spr.y > play.y + play.h - CFG.BULLET.r) {
-          spr.y = play.y + play.h - CFG.BULLET.r;
-          item.vy = -Math.abs(item.vy);
+        const atXMin = spr.x < play.x + CFG.BULLET.r;
+        const atXMax = spr.x > play.x + play.w - CFG.BULLET.r;
+        const atYMin = spr.y < play.y + CFG.BULLET.r;
+        const atYMax = spr.y > play.y + play.h - CFG.BULLET.r;
+
+        if (atXMin || atXMax || atYMin || atYMax) {
+          if (item.bounces > 0) {
+            item.bounces--;
+            if (atXMin) { spr.x = play.x + CFG.BULLET.r; item.vx = Math.abs(item.vx); }
+            else if (atXMax) { spr.x = play.x + play.w - CFG.BULLET.r; item.vx = -Math.abs(item.vx); }
+            if (atYMin) { spr.y = play.y + CFG.BULLET.r; item.vy = Math.abs(item.vy); }
+            else if (atYMax) { spr.y = play.y + play.h - CFG.BULLET.r; item.vy = -Math.abs(item.vy); }
+          } else {
+            this.release(item);
+            released = true;
+            break;
+          }
         }
 
-        const bounced = reflectAABB(spr.x, spr.y, item.vx, item.vy, CFG.BULLET.r, cube);
-        if (bounced.hit) {
-          spr.x = bounced.x;
-          spr.y = bounced.y;
-          item.vx = bounced.vx;
-          item.vy = bounced.vy;
+        if (cube) {
+          const bounced = reflectAABB(spr.x, spr.y, item.vx, item.vy, CFG.BULLET.r, cube);
+          if (bounced.hit) {
+            if (item.bounces > 0) {
+              item.bounces--;
+              spr.x = bounced.x;
+              spr.y = bounced.y;
+              item.vx = bounced.vx;
+              item.vy = bounced.vy;
+            } else {
+              this.release(item);
+              released = true;
+              break;
+            }
+          }
         }
+
         spr.setRotation(Math.atan2(item.vy, item.vx));
       }
+
+      if (released) continue;
 
       item.life -= dt * 1000;
       if (item.life <= 0) this.release(item);
@@ -92,6 +121,8 @@ export class BulletPool {
   release(item) {
     item.active = false;
     item.life = 0;
+    item.bounces = 0;
+    item.pierce = false;
     item.spr.setActive(false).setVisible(false);
   }
 

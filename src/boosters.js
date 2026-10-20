@@ -1,8 +1,57 @@
 export const ALL_BOOSTERS = [
   {
+    id: 'burst_fire',
+    title: 'BURST PROTOCOL',
+    category: 'WEAPON [BURST]',
+    color: '#ffdd00',
+    buff: '1 clic dispara una ráfaga secuencial de 3 proyectiles',
+    debuff: '+30% Tiempo de enfriamiento del cargador',
+    apply: (stats) => {
+      stats.fireMode = 'burst';
+      stats.fireCdMult = (stats.fireCdMult || 1) * 1.25;
+    }
+  },
+  {
+    id: 'spread_cannon',
+    title: 'SPREAD CANNON',
+    category: 'WEAPON [SHOTGUN]',
+    color: '#ff7a00',
+    buff: '1 clic dispara un abanico frontal de 3 proyectiles',
+    debuff: '-15% Velocidad de proyectiles',
+    apply: (stats) => {
+      stats.fireMode = 'spread';
+      stats.bulletSpeedMult = (stats.bulletSpeedMult || 1) * 0.85;
+    }
+  },
+  {
+    id: 'trivector_array',
+    title: 'TRI-VECTOR ARRAY',
+    category: 'WEAPON [MULTIDIR]',
+    color: '#39ff14',
+    buff: 'Disparo multidireccional: 1 frontal + 2 laterales a 65°',
+    debuff: '+20% Velocidad de desplazamiento enemigo',
+    apply: (stats) => {
+      stats.fireMode = 'trivector';
+      stats.enemySpeedBonus = (stats.enemySpeedBonus || 0) + 0.2;
+    }
+  },
+  {
+    id: 'piercing_railgun',
+    title: 'PIERCING RAILGUN',
+    category: 'WEAPON [PIERCE]',
+    color: '#00ffff',
+    buff: 'Proyectiles de alta energía que penetran enemigos',
+    debuff: 'Cargador limitado a 2 disparos por ciclo',
+    apply: (stats) => {
+      stats.fireMode = 'pierce';
+      stats.bulletPierce = true;
+      stats.magazineSize = 2;
+    }
+  },
+  {
     id: 'multishot',
     title: 'OVERCLOCKED BLASTER',
-    category: 'WEAPON',
+    category: 'WEAPON [CAPACITY]',
     color: '#00ffff',
     buff: '+1 Proyectil simultáneo en pantalla',
     debuff: '+40% Frecuencia de Glitches del sistema',
@@ -14,7 +63,7 @@ export const ALL_BOOSTERS = [
   {
     id: 'blindspot',
     title: 'TUNNEL VISION',
-    category: 'OPTICS',
+    category: 'OPTICS [SPECIAL]',
     color: '#ff00ff',
     buff: '+40% Cadencia de fuego y +25% Puntuación',
     debuff: 'PUNTO CIEGO: Solo visualizas el cono frontal',
@@ -67,10 +116,10 @@ export const ALL_BOOSTERS = [
     title: 'RICOCHET ROUNDS',
     category: 'BALLISTICS',
     color: '#00ffff',
-    buff: 'Balas rebotan 1 vez extra en los bordes',
+    buff: 'Balas rebotan 1 vez en paredes y cobertura',
     debuff: 'Balas enemigas viajan un 20% más rápido',
     apply: (stats) => {
-      stats.bulletBounces = (stats.bulletBounces || 0) + 1;
+      stats.bulletBounces = 1;
       stats.enemySpeedBonus = (stats.enemySpeedBonus || 0) + 0.2;
     }
   }
@@ -84,6 +133,10 @@ export class BoosterManager {
 
   reset() {
     this.stats = {
+      fireMode: 'single',
+      bulletSpeedMult: 1.0,
+      bulletPierce: false,
+      magazineSize: 3,
       maxBulletsBonus: 0,
       speedMult: 1.0,
       fireCdMult: 1.0,
@@ -104,7 +157,6 @@ export class BoosterManager {
 
   generateOffer(count = 3) {
     const pool = ALL_BOOSTERS.slice();
-    // Shuffle
     for (let i = pool.length - 1; i > 0; i--) {
       const j = Math.floor(this.rng() * (i + 1));
       const tmp = pool[i];

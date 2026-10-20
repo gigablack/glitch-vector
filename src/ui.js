@@ -174,9 +174,29 @@ export class Hud {
 
       this.boosterContainer.add(c);
     }
+
+    // Skip Upgrade Button (Omitir Mejora)
+    this.skipBg = this.scene.add.rectangle(640, 590, 420, 44, 0x080c18, 0.95)
+      .setStrokeStyle(2, COLORS.danger)
+      .setInteractive({ useHandCursor: true });
+    this.skipText = this.scene.add.text(640, 590, '[ OMITIR MEJORA / MANTENER BUILD (+500 PTS) ]', style(11, CSS.red))
+      .setOrigin(0.5);
+
+    this.skipBg.on('pointerover', () => {
+      this.skipBg.setStrokeStyle(2, COLORS.white);
+      this.skipBg.setScale(1.03);
+      this.skipText.setScale(1.03);
+    });
+    this.skipBg.on('pointerout', () => {
+      this.skipBg.setStrokeStyle(2, COLORS.danger);
+      this.skipBg.setScale(1.0);
+      this.skipText.setScale(1.0);
+    });
+
+    this.boosterContainer.add([this.skipBg, this.skipText]);
   }
 
-  showBoosters(cards, onPick) {
+  showBoosters(cards, onPick, onSkip) {
     for (let i = 0; i < 3; i++) {
       const card = cards[i];
       const ui = this.cardContainers[i];
@@ -197,6 +217,13 @@ export class Hud {
         onPick(card);
       });
     }
+
+    this.skipBg.removeAllListeners('pointerdown');
+    this.skipBg.on('pointerdown', () => {
+      this.hideBoosters();
+      if (onSkip) onSkip();
+    });
+
     this.boosterContainer.setVisible(true);
   }
 
@@ -226,11 +253,10 @@ export class Hud {
       this.multText.setColor(data.mult >= 8 ? CSS.green : data.mult >= 4 ? CSS.orange : CSS.magenta);
       this.last.mult = mult;
     }
-    const available = Math.max(0, data.maxBullets - data.bullets);
-    const ammo = `AMMO ${available}`;
+    const ammo = data.isReloading ? 'RELOAD...' : `AMMO ${data.ammo ?? 3}/${data.maxAmmo ?? 3}`;
     if (ammo !== this.last.ammo) {
       this.ammoText.setText(ammo);
-      this.ammoText.setColor(available === 0 ? CSS.red : CSS.dim);
+      this.ammoText.setColor(data.isReloading ? CSS.red : data.ammo === 0 ? CSS.red : CSS.dim);
       this.last.ammo = ammo;
     }
 
