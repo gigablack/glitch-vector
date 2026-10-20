@@ -23,6 +23,22 @@ export class Player {
     this.burstRemaining = 0;
     this.burstTimer = 0;
 
+    // Dynamic procedural traits
+    this.rammingDamage = false;
+    this.rammingPower = 1;
+    this.extraCollisionDamage = false;
+    this.heavyInertia = false;
+    this.recoilKick = false;
+    this.naniteRepair = false;
+    this.retaliationEmp = false;
+    this.stasisRounds = false;
+    this.impactNova = false;
+    this.magnetRadiusBonus = 0;
+    this.overdriveTimer = 0;
+    this.unlimitedAmmoTimer = 0;
+    this.phaseInvulnTimer = 0;
+    this.needRetaliationEmp = false;
+
     this.reset();
   }
 
@@ -38,11 +54,16 @@ export class Player {
     this.reloadCooldown = 0;
     this.burstRemaining = 0;
     this.burstTimer = 0;
+    this.overdriveTimer = 0;
+    this.unlimitedAmmoTimer = 0;
+    this.phaseInvulnTimer = 0;
+    this.needRetaliationEmp = false;
     this.dead = false;
     this.spr.setPosition(this.x, this.y)
       .setVisible(true)
       .setAlpha(1)
       .setScale(1)
+      .clearTint()
       .setRotation(-Math.PI / 2);
   }
 
@@ -54,6 +75,16 @@ export class Player {
     this.bulletBounces = modifiers.bulletBounces || 0;
     this.bulletPierce = !!modifiers.bulletPierce;
     this.magazineSize = modifiers.magazineSize || 3;
+    this.rammingDamage = !!modifiers.rammingDamage;
+    this.rammingPower = modifiers.rammingPower || 1;
+    this.extraCollisionDamage = !!modifiers.extraCollisionDamage;
+    this.heavyInertia = !!modifiers.heavyInertia;
+    this.recoilKick = !!modifiers.recoilKick;
+    this.naniteRepair = !!modifiers.naniteRepair;
+    this.retaliationEmp = !!modifiers.retaliationEmp;
+    this.stasisRounds = !!modifiers.stasisRounds;
+    this.impactNova = !!modifiers.impactNova;
+    this.magnetRadiusBonus = modifiers.magnetRadiusBonus || 0;
 
     if (modifiers.maxShields && modifiers.maxShields !== this.maxShields) {
       const diff = modifiers.maxShields - this.maxShields;
@@ -109,10 +140,37 @@ export class Player {
       ay = -ay;
     }
 
-    const currentSpeed = CFG.PLAYER.speed * this.speedMult;
+    if (this.unlimitedAmmoTimer > 0) {
+      this.unlimitedAmmoTimer = Math.max(0, this.unlimitedAmmoTimer - dt * 1000);
+      this.magazineShots = this.magazineSize;
+      this.reloadCooldown = 0;
+    }
+    if (this.phaseInvulnTimer > 0) {
+      this.phaseInvulnTimer = Math.max(0, this.phaseInvulnTimer - dt * 1000);
+    }
+    if (this.overdriveTimer > 0) {
+      this.overdriveTimer = Math.max(0, this.overdriveTimer - dt * 1000);
+    }
+
+    if (this.phaseInvulnTimer > 0) {
+      this.spr.setTint(0x39ff14);
+      this.spr.setAlpha(0.65 + Math.sin(Date.now() * 0.015) * 0.25);
+    } else if (this.overdriveTimer > 0) {
+      this.spr.setTint(0xffaa00);
+      this.spr.setAlpha(1);
+    } else if (this.unlimitedAmmoTimer > 0) {
+      this.spr.setTint(0x00ffff);
+      this.spr.setAlpha(1);
+    } else if (this.invuln <= 0) {
+      this.spr.clearTint();
+      this.spr.setAlpha(1);
+    }
+
+    const overdriveBoost = this.overdriveTimer > 0 ? 1.4 : 1.0;
+    const currentSpeed = CFG.PLAYER.speed * this.speedMult * overdriveBoost;
     const targetVx = ax * currentSpeed;
     const targetVy = ay * currentSpeed;
-    const tau = CFG.PLAYER.tau * (this.speedMult > 1.2 ? 1.3 : 1);
+    const tau = CFG.PLAYER.tau * (this.heavyInertia ? 2.2 : (this.speedMult > 1.2 ? 1.3 : 1));
     const k = 1 - Math.exp((-dt * 1000) / tau);
     this.vx += (targetVx - this.vx) * k;
     this.vy += (targetVy - this.vy) * k;
@@ -150,11 +208,9 @@ export class Player {
     this.spr.setPosition(this.x, this.y);
     this.spr.setRotation(Math.atan2(aimY - this.y, aimX - this.x));
 
-    if (this.invuln > 0) {
+    if (this.invuln > 0 && this.phaseInvulnTimer <= 0) {
       this.invuln = Math.max(0, this.invuln - dt * 1000);
       this.spr.setAlpha(Math.floor(this.invuln / 100) % 2 === 0 ? 1 : 0.25);
-    } else {
-      this.spr.setAlpha(1);
     }
   }
 
@@ -206,10 +262,14 @@ export class Player {
     }
   }
 
-  damage() {
-    if (this.invuln > 0 || this.dead) return false;
-    this.shields -= 1;
+  damage(isCollision = false) {
+    if (this.phaseInvulnTimer > 0 || this.invuln > 0 || this.dead || this.overdriveTimer > 0) return false;
+    const loss = (isCollision && this.extraCollisionDamage) ? 2 : 1;
+    this.shields = Math.max(0, this.shields - loss);
     this.invuln = CFG.PLAYER.invuln;
+    if (this.retaliationEmp && this.shields > 0) {
+      this.needRetaliationEmp = true;
+    }
     if (this.shields <= 0) {
       this.shields = 0;
       this.dead = true;
@@ -220,16 +280,31 @@ export class Player {
 
   canFire(activeBullets) {
     const maxB = CFG.PLAYER.maxBullets + this.maxBulletsBonus;
-    return !this.dead &&
-      this.fireCd <= 0 &&
+    if (this.dead) return false;
+    if (this.unlimitedAmmoTimer > 0) {
+      return this.fireCd <= 0 && activeBullets < maxB;
+    }
+    return this.fireCd <= 0 &&
       this.reloadCooldown <= 0 &&
       this.magazineShots > 0 &&
       activeBullets < maxB;
   }
 
   markFired() {
+    if (this.unlimitedAmmoTimer > 0) {
+      this.fireCd = CFG.PLAYER.fireCd * this.fireCdMult * 0.65;
+      if (this.recoilKick) {
+        this.vx -= Math.cos(this.spr.rotation) * 85;
+        this.vy -= Math.sin(this.spr.rotation) * 85;
+      }
+      return;
+    }
     this.fireCd = CFG.PLAYER.fireCd * this.fireCdMult;
     this.magazineShots--;
+    if (this.recoilKick) {
+      this.vx -= Math.cos(this.spr.rotation) * 85;
+      this.vy -= Math.sin(this.spr.rotation) * 85;
+    }
     if (this.magazineShots <= 0) {
       // 3-shot cooldown reload period
       this.reloadCooldown = this.reloadTime * (this.fireCdMult || 1);

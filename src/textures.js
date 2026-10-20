@@ -235,6 +235,69 @@ export function createTextures(scene) {
     g.fillRect(7, 10, 10, 4);
   });
 
+  make(scene, 'pickup_emp', 24, 24, (g) => {
+    g.fillStyle(0x220033, 0.85);
+    g.fillCircle(12, 12, 10);
+    g.lineStyle(2, COLORS.magenta, 1);
+    g.strokeCircle(12, 12, 10);
+    g.lineStyle(1.5, COLORS.cyan, 1);
+    // Lightning bolt in center
+    const bolt = [[14, 3], [8, 12], [13, 12], [10, 21], [16, 11], [11, 11]];
+    poly(g, bolt);
+    g.strokePath();
+  });
+
+  make(scene, 'pickup_overdrive', 24, 24, (g) => {
+    g.fillStyle(0x331a00, 0.85);
+    const star = starPoints(12, 12, 11, 5, 4);
+    poly(g, star);
+    g.fillPath();
+    g.lineStyle(2, COLORS.orange, 1);
+    poly(g, star);
+    g.strokePath();
+    g.lineStyle(1, COLORS.yellow, 1);
+    g.strokeCircle(12, 12, 4);
+  });
+
+  make(scene, 'pickup_score', 24, 24, (g) => {
+    const diamond = [[12, 2], [22, 12], [12, 22], [2, 12]];
+    g.fillStyle(0x1a0022, 0.85);
+    poly(g, diamond);
+    g.fillPath();
+    g.lineStyle(2, COLORS.yellow, 1);
+    poly(g, diamond);
+    g.strokePath();
+    g.lineStyle(1.5, COLORS.white, 1);
+    g.strokeCircle(12, 12, 4);
+  });
+
+  make(scene, 'pickup_chrono', 24, 24, (g) => {
+    g.fillStyle(0x001a33, 0.85);
+    g.fillCircle(12, 12, 11);
+    g.lineStyle(2, 0x00e5ff, 1);
+    g.strokeCircle(12, 12, 10);
+    g.lineStyle(1.5, COLORS.white, 1);
+    const hg = [[7, 6], [17, 6], [12, 12], [17, 18], [7, 18], [12, 12]];
+    poly(g, hg);
+    g.strokePath();
+    g.fillStyle(0x00e5ff, 1);
+    g.fillCircle(12, 12, 2);
+  });
+
+  make(scene, 'pickup_nova', 24, 24, (g) => {
+    g.fillStyle(0x330011, 0.85);
+    const star = starPoints(12, 12, 11, 4, 6);
+    poly(g, star);
+    g.fillPath();
+    g.lineStyle(2, 0xff3366, 1);
+    poly(g, star);
+    g.strokePath();
+    g.lineStyle(1.5, COLORS.orange, 1);
+    g.strokeCircle(12, 12, 4);
+    g.fillStyle(COLORS.white, 1);
+    g.fillCircle(12, 12, 2);
+  });
+
   make(scene, 'boss_worm_head', 56, 56, (g) => {
     g.fillStyle(COLORS.orange, 0.35);
     g.fillCircle(28, 28, 24);

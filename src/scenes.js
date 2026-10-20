@@ -223,6 +223,7 @@ export class GameScene extends Phaser.Scene {
     this.sequence.clear();
     this.obstacles.reconfigure();
 
+    this.enemySlowTimer = 0;
     this.audio.setPaused(false);
     this.audio.setGlitch(false);
     this.audio.setBreak(false);
@@ -243,6 +244,11 @@ export class GameScene extends Phaser.Scene {
     this.waveTimer = 0;
     this.breakTimer = 0;
     this.spawnAccum = 0;
+    this.enemySlowTimer = 0;
+    if (this.player.naniteRepair && this.player.healShield(1)) {
+      this.fx.text(this.player.x, this.player.y - 20, '+NANITE REPAIR', '#39ff14');
+      this.audio.sfx('shield');
+    }
     this.enemies.clear();
     this.bosses.killBoss();
     this.bullets.clear();
@@ -287,17 +293,70 @@ export class GameScene extends Phaser.Scene {
     this.startWave();
   }
 
-  onCollectPickup(type, x, y) {
+  onCollectPickup(type, x, y, booster = null) {
+    const label = booster ? `+${booster.name}` : `+${type.toUpperCase()}`;
+    const color = booster ? booster.color : '#00ffff';
+
     if (type === 'ammo') {
+      this.player.magazineShots = this.player.magazineSize;
+      this.player.reloadCooldown = 0;
       this.player.fireCd = 0;
-      this.fx.text(x, y, '+AMMO', '#00ffff');
       this.audio.sfx('shoot');
     } else if (type === 'shield') {
       this.player.healShield(1);
-      this.fx.text(x, y, '+SHIELD', '#39ff14');
       this.audio.sfx('shield');
+    } else if (type === 'emp') {
+      this.ebullets.clear();
+      this.fx.burst(x, y, COLORS.magenta, 70);
+      this.fx.burst(x, y, COLORS.cyan, 30);
+      this.audio.sfx('explosion');
+    } else if (type === 'overdrive') {
+      this.player.overdriveTimer = 4500;
+      this.fx.burst(x, y, COLORS.orange, 50);
+      this.audio.sfx('combo');
+    } else if (type === 'score') {
+      this.mult = Math.min(8, this.mult + 2);
+      this.audio.sfx('combo');
+    } else if (type === 'chrono') {
+      this.enemySlowTimer = 4000;
+      this.fx.burst(x, y, 0x00e5ff, 50);
+      this.audio.sfx('combo');
+    } else if (type === 'nova') {
+      this.ebullets.clear();
+      this.triggerShockwave(x, y, 170, 6);
+      this.fx.burst(x, y, 0xff3366, 60);
+      this.audio.sfx('explosion');
     }
-    this.vignette.triggerHit(0.2);
+
+    if (booster && booster.affix && booster.affix !== 'standard') {
+      if (booster.affix === 'overcharged') {
+        this.player.unlimitedAmmoTimer = 4000;
+        this.fx.burst(x, y, COLORS.cyan, 40);
+      } else if (booster.affix === 'quantum') {
+        this.player.phaseInvulnTimer = 3000;
+        this.fx.burst(x, y, COLORS.green, 40);
+      } else if (booster.affix === 'volatile') {
+        this.ebullets.clear();
+        this.triggerShockwave(x, y, 320, 5);
+        this.fx.burst(x, y, COLORS.magenta, 80);
+      } else if (booster.affix === 'kinetic') {
+        this.player.overdriveTimer = Math.max(this.player.overdriveTimer, 5000);
+        this.triggerShockwave(x, y, 200, 4);
+      } else if (booster.affix === 'vortex') {
+        this.score += 2000;
+        for (const item of this.pickups.pool) {
+          if (item.active) {
+            item.vx = (this.player.x - item.x) * 4;
+            item.vy = (this.player.y - item.y) * 4;
+          }
+        }
+      } else if (booster.affix === 'chrono') {
+        this.enemySlowTimer = 5500;
+      }
+    }
+
+    this.fx.text(x, y, label, color);
+    this.vignette.triggerHit(0.25);
     this.syncHud();
   }
 
@@ -330,7 +389,11 @@ export class GameScene extends Phaser.Scene {
     const aimX = pointer.worldX ?? (this.player.x + 100);
     const aimY = pointer.worldY ?? this.player.y;
     this.player.update(dt, this.getInput(), aimX, aimY, this.obstacles, this.glitch.invert);
-    this.pickups.update(dt, this.player, (type, x, y) => this.onCollectPickup(type, x, y));
+    this.pickups.update(dt, this.player, (type, x, y, booster) => this.onCollectPickup(type, x, y, booster));
+
+    if (this.enemySlowTimer > 0) {
+      this.enemySlowTimer = Math.max(0, this.enemySlowTimer - dt * 1000);
+    }
 
     if (this.burstQueue > 0) {
       this.burstTimer -= delta;
@@ -360,14 +423,16 @@ export class GameScene extends Phaser.Scene {
       this.updateFiring();
       this.spawnEnemies(time, delta);
       this.bullets.update(dt, this.obstacles.primaryAABB, CFG.PLAY);
+      const enemyDt = this.enemySlowTimer > 0 ? dt * 0.55 : dt;
+      const bulletSpeedMod = this.boosters.stats.hyperEbullets ? 1.25 : 1.0;
       this.bosses.update(
-        dt, time, this.player, this.glitch.speedMult,
-        (x, y, vx, vy, k) => this.ebullets.spawn(x, y, vx, vy, k),
+        enemyDt, time, this.player, this.glitch.speedMult,
+        (x, y, vx, vy, k) => this.ebullets.spawn(x, y, vx * bulletSpeedMod, vy * bulletSpeedMod, k),
         this.glitch
       );
       this.enemies.update(
-        dt, time, this.player, this.glitch.speedMult, this.obstacles.primaryAABB,
-        (x, y, vx, vy, kind) => this.ebullets.spawn(x, y, vx, vy, kind),
+        enemyDt, time, this.player, this.glitch.speedMult, this.obstacles.primaryAABB,
+        (x, y, vx, vy, kind) => this.ebullets.spawn(x, y, vx * bulletSpeedMod, vy * bulletSpeedMod, kind),
         this.wave
       );
       this.ebullets.update(dt, CFG.PLAY, this.obstacles.primaryAABB);
@@ -511,15 +576,40 @@ export class GameScene extends Phaser.Scene {
       const py = enemy.prevY ?? enemy.spr.y;
       if (segDist2(player.x, player.y, px, py, enemy.spr.x, enemy.spr.y) <
           (enemy.r + CFG.PLAYER.hitR) ** 2) {
-        if (player.damage()) this.onPlayerHit();
-        this.killEnemy(enemy, false);
+
+        const isRamming = player.overdriveTimer > 0 || player.rammingDamage;
+        if (isRamming) {
+          const dmg = player.overdriveTimer > 0 ? 10 : (player.rammingPower || 3);
+          enemy.hp -= dmg;
+          this.fx.burst(enemy.spr.x, enemy.spr.y, COLORS.orange, 20);
+          this.vignette.triggerHit(0.3);
+          this.audio.sfx('explosion');
+          if (enemy.hp <= 0) {
+            if (player.impactNova) {
+              this.triggerShockwave(enemy.spr.x, enemy.spr.y, 140, 4);
+            }
+            this.killEnemy(enemy, true);
+          } else {
+            enemy.flashUntil = this.time.now + 60;
+            enemy.spr.setTint(0xffffff);
+          }
+        } else {
+          if (player.damage(true)) this.onPlayerHit();
+          this.killEnemy(enemy, false);
+        }
       }
     });
 
     // Boss vs Player (Boss ignores obstacles!)
     if (this.bosses.boss && !this.dead) {
       if (this.bosses.checkPlayerCollision(player)) {
-        if (player.damage()) this.onPlayerHit();
+        if (player.overdriveTimer > 0 || player.rammingDamage) {
+          const dmg = player.overdriveTimer > 0 ? 3 : 1;
+          this.bosses.hit(dmg, this.time.now);
+          this.vignette.triggerHit(0.4);
+          this.fx.burst(player.x, player.y, COLORS.orange, 15);
+        }
+        if (player.damage(true)) this.onPlayerHit();
       }
     }
 
@@ -540,6 +630,10 @@ export class GameScene extends Phaser.Scene {
     enemy.hp -= 1;
     enemy.flashUntil = this.time.now + 60;
     enemy.spr.setTint(0xffffff);
+    if (this.player.stasisRounds) {
+      enemy.vx *= 0.65;
+      enemy.vy *= 0.65;
+    }
     this.vignette.triggerHit(0.35);
     this.audio.sfx('hit');
     this.fx.burst(enemy.spr.x, enemy.spr.y, enemy.def.color, 4);
@@ -669,8 +763,55 @@ export class GameScene extends Phaser.Scene {
     // Call of Duty style diffused red border shadow
     this.vignette.triggerDamage(0.95);
     this.audio.sfx('shield');
+
+    if (this.player.needRetaliationEmp) {
+      this.player.needRetaliationEmp = false;
+      this.ebullets.clear();
+      this.triggerShockwave(this.player.x, this.player.y, 160, 4);
+      this.fx.burst(this.player.x, this.player.y, COLORS.magenta, 60);
+      this.fx.burst(this.player.x, this.player.y, COLORS.cyan, 30);
+      this.fx.text(this.player.x, this.player.y - 25, '+DESCARGA EMP', '#ff00ff');
+      this.audio.sfx('explosion');
+    }
+
     this.syncHud();
     if (this.player.dead) this.beginDeath();
+  }
+
+  triggerShockwave(x, y, radius = 150, damage = 4) {
+    this.fx.burst(x, y, COLORS.orange, 35);
+    this.fx.burst(x, y, COLORS.cyan, 20);
+    this.fx.shake(0.012, 250);
+    this.audio.sfx('explosion');
+
+    const r2 = radius * radius;
+    this.enemies.forEachActive((enemy) => {
+      const dx = enemy.spr.x - x;
+      const dy = enemy.spr.y - y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 <= r2) {
+        enemy.hp -= damage;
+        const dist = Math.sqrt(d2) || 1;
+        enemy.vx += (dx / dist) * 160;
+        enemy.vy += (dy / dist) * 160;
+        enemy.flashUntil = this.time.now + 80;
+        enemy.spr.setTint(0xffffff);
+        if (enemy.hp <= 0) {
+          this.killEnemy(enemy, true);
+        }
+      }
+    });
+
+    if (this.bosses.boss) {
+      const boss = this.bosses.boss;
+      const dx = boss.spr.x - x;
+      const dy = boss.spr.y - y;
+      if (dx * dx + dy * dy <= r2) {
+        const dead = this.bosses.hit(Math.min(2, damage), this.time.now);
+        this.fx.burst(boss.spr.x, boss.spr.y, COLORS.magenta, 12);
+        if (dead) this.killBoss();
+      }
+    }
   }
 
   beginDeath() {

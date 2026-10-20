@@ -1,6 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BoosterManager, ALL_BOOSTERS } from '../src/boosters.js';
+import {
+  BoosterManager,
+  ALL_BOOSTERS,
+  BUFF_TEMPLATES,
+  DEBUFF_TEMPLATES,
+  buildDynamicBooster
+} from '../src/boosters.js';
+import {
+  FIELD_BOOSTER_BASES,
+  FIELD_BOOSTER_AFFIXES,
+  buildDynamicFieldBooster
+} from '../src/pickups.js';
 import { buildWave, mulberry32 } from '../src/rules.js';
 
 test('BoosterManager: genera exactamente 3 cartas distintas', () => {
@@ -10,6 +21,12 @@ test('BoosterManager: genera exactamente 3 cartas distintas', () => {
   assert.equal(cards.length, 3);
   const ids = new Set(cards.map((c) => c.id));
   assert.equal(ids.size, 3);
+  // Verify dynamic structure
+  for (const card of cards) {
+    assert.ok(card.title && card.title.length > 5);
+    assert.ok(card.buff && card.buff.length > 5);
+    assert.ok(card.debuff && card.debuff.length > 5);
+  }
 });
 
 test('BoosterManager: aplica modificadores de riesgo y recompensa', () => {
@@ -60,6 +77,67 @@ test('Boosters de Disparo: perfiles de armas tácticas', () => {
   assert.equal(bm.stats.fireMode, 'pierce');
   assert.equal(bm.stats.bulletPierce, true);
   assert.equal(bm.stats.magazineSize, 2);
+});
+
+test('Construcción Dinámica de Boosters: Ramming y Vulnerabilidad de Colisión', () => {
+  const rng = mulberry32(606);
+  const ramBuff = BUFF_TEMPLATES.find((b) => b.id === 'ramming');
+  const fragileDebuff = DEBUFF_TEMPLATES.find((d) => d.id === 'fragile_collision');
+
+  assert.ok(ramBuff, 'Debe existir plantilla de daño por colisión');
+  assert.ok(fragileDebuff, 'Debe existir plantilla de penalización de colisión');
+
+  const card = buildDynamicBooster(ramBuff, fragileDebuff, rng);
+  assert.ok(card.title.includes('RAM'));
+  assert.ok(card.buff.includes('Daño por colisión masivo'));
+  assert.ok(card.debuff.includes('Vulnerabilidad'));
+
+  const stats = {};
+  card.apply(stats);
+  assert.equal(stats.rammingDamage, true);
+  assert.equal(stats.extraCollisionDamage, true);
+  assert.ok(stats.rammingPower >= 2);
+});
+
+test('Listas Expandidas de Mejoras y Penalizaciones: Nuevos Arquetipos', () => {
+  const rng = mulberry32(707);
+  const novaBuff = BUFF_TEMPLATES.find((b) => b.id === 'impact_nova');
+  const recoilDebuff = DEBUFF_TEMPLATES.find((d) => d.id === 'recoil_kick');
+  const naniteBuff = BUFF_TEMPLATES.find((b) => b.id === 'nanite_repair');
+  const hyperDebuff = DEBUFF_TEMPLATES.find((d) => d.id === 'hyper_ebullets');
+
+  assert.ok(novaBuff, 'Debe existir buff impact_nova');
+  assert.ok(recoilDebuff, 'Debe existir debuff recoil_kick');
+  assert.ok(naniteBuff, 'Debe existir buff nanite_repair');
+  assert.ok(hyperDebuff, 'Debe existir debuff hyper_ebullets');
+
+  const card1 = buildDynamicBooster(novaBuff, recoilDebuff, rng);
+  const stats1 = {};
+  card1.apply(stats1);
+  assert.equal(stats1.impactNova, true);
+  assert.equal(stats1.recoilKick, true);
+
+  const card2 = buildDynamicBooster(naniteBuff, hyperDebuff, rng);
+  const stats2 = {};
+  card2.apply(stats2);
+  assert.equal(stats2.naniteRepair, true);
+  assert.equal(stats2.hyperEbullets, true);
+});
+
+test('Boosters de Campo Dinámicos: Construcción con Bases y Afijos', () => {
+  const rng = mulberry32(808);
+  assert.ok(FIELD_BOOSTER_BASES.length >= 7, 'Debe contar con al menos 7 tipos base de campo');
+  assert.ok(FIELD_BOOSTER_AFFIXES.length >= 7, 'Debe contar con afijos de campo');
+
+  const ammoBase = FIELD_BOOSTER_BASES.find((b) => b.id === 'ammo');
+  const overchargedAffix = FIELD_BOOSTER_AFFIXES.find((a) => a.id === 'overcharged');
+  const booster = buildDynamicFieldBooster(ammoBase, overchargedAffix, rng);
+
+  assert.equal(booster.type, 'ammo');
+  assert.equal(booster.affix, 'overcharged');
+  assert.ok(booster.name.includes('SOBRECARGADO'));
+  assert.ok(booster.name.includes('MUNICIÓN'));
+  assert.equal(booster.color, '#00ffff');
 });
 
 test('Comportamiento de Disparo Base: 3 disparos por ciclo', () => {
