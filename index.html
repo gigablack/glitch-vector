@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>GLITCH//VECTOR</title>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+      font-family: monospace;
+    }
+    #game {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #game canvas {
+      display: block;
+      transition: filter 80ms linear;
+    }
+    body.gv-invert #game canvas {
+      filter: invert(1);
+    }
+    #scanlines,
+    #vignette {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+    }
+    #scanlines {
+      z-index: 2;
+      opacity: 0.42;
+      background: repeating-linear-gradient(
+        0deg,
+        rgba(0, 0, 0, 0.55) 0px,
+        rgba(0, 0, 0, 0.55) 1px,
+        transparent 1px,
+        transparent 3px
+      );
+    }
+    #vignette {
+      z-index: 3;
+      background: radial-gradient(
+        ellipse at center,
+        transparent 48%,
+        rgba(0, 0, 0, 0.42) 78%,
+        rgba(0, 0, 0, 0.82) 100%
+      );
+    }
+    #fallback,
+    #error {
+      position: fixed;
+      z-index: 20;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      max-width: 720px;
+      padding: 24px;
+      border: 1px solid #ff00ff;
+      background: #05000a;
+      color: #9ff;
+      font: 13px/1.6 monospace;
+      text-align: center;
+      display: none;
+    }
+    #fallback h1,
+    #error h1 {
+      margin: 0 0 10px;
+      color: #00ffff;
+      font-size: 18px;
+    }
+    #error {
+      border-color: #ff3355;
+      color: #ffd7dd;
+      text-align: left;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <div id="game"></div>
+  <div id="scanlines"></div>
+  <div id="vignette"></div>
+
+  <div id="fallback">
+    <h1>FAILED TO LOAD ENGINE</h1>
+    <p>Phaser could not be loaded from the CDN.</p>
+    <p>Check your connection and reload the page.</p>
+  </div>
+
+  <div id="error"></div>
+
+  <script>
+    addEventListener('error', function (event) {
+      if (!window.Phaser) {
+        document.getElementById('fallback').style.display = 'block';
+        return;
+      }
+      var el = document.getElementById('error');
+      if (!el) return;
+      el.style.display = 'block';
+      el.textContent = 'RUNTIME ERROR\n' + (event.message || 'unknown') +
+        (event.filename ? '\n' + event.filename + ':' + event.lineno : '');
+    });
+    addEventListener('unhandledrejection', function (event) {
+      var el = document.getElementById('error');
+      if (!el) return;
+      el.style.display = 'block';
+      el.textContent = 'PROMISE ERROR\n' + (event.reason && event.reason.message ? event.reason.message : event.reason);
+    });
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.70.0/dist/phaser.min.js"></script>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
