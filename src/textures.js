@@ -37,6 +37,118 @@ export function createTextures(scene) {
     g.lineBetween(7, 13, 20, 13);
   });
 
+  // Ship Variant: Armored Kinetic Ramming Prow
+  make(scene, 'player_ram', 30, 30, (g) => {
+    const points = [[29, 15], [20, 8], [2, 3], [7, 15], [2, 27], [20, 22]];
+    g.fillStyle(0xff7a00, 0.9);
+    poly(g, points);
+    g.fillPath();
+    g.lineStyle(2, COLORS.white, 1);
+    poly(g, points);
+    g.strokePath();
+    // Armored reinforced wedge
+    g.lineStyle(1.5, COLORS.yellow, 1);
+    g.lineBetween(16, 7, 28, 15);
+    g.lineBetween(16, 23, 28, 15);
+    g.lineBetween(16, 7, 16, 23);
+  });
+
+  // Ship Variant: Long-Range Piercing Railgun
+  make(scene, 'player_railgun', 32, 26, (g) => {
+    const points = [[31, 13], [14, 5], [2, 2], [6, 13], [2, 24], [14, 21]];
+    g.fillStyle(0x00ffff, 0.85);
+    poly(g, points);
+    g.fillPath();
+    g.lineStyle(2, COLORS.white, 1);
+    poly(g, points);
+    g.strokePath();
+    // Railgun dual accelerators
+    g.lineStyle(1.5, COLORS.cyan, 1);
+    g.lineBetween(12, 11, 30, 11);
+    g.lineBetween(12, 15, 30, 15);
+    g.fillStyle(COLORS.white, 1);
+    g.fillRect(16, 12, 6, 2);
+  });
+
+  // Ship Variant: Spread Shotgun Heavy Wing
+  make(scene, 'player_spread', 28, 28, (g) => {
+    const points = [[26, 14], [18, 2], [2, 5], [7, 14], [2, 23], [18, 26]];
+    g.fillStyle(0x00cc88, 0.85);
+    poly(g, points);
+    g.fillPath();
+    g.lineStyle(2, COLORS.white, 1);
+    poly(g, points);
+    g.strokePath();
+    g.lineStyle(1.5, COLORS.green, 1);
+    g.lineBetween(18, 2, 24, 10);
+    g.lineBetween(18, 26, 24, 18);
+  });
+
+  // Ship Variant: High-Cadence Burst Fighter
+  make(scene, 'player_burst', 28, 26, (g) => {
+    const points = [[27, 13], [16, 3], [2, 4], [8, 13], [2, 22], [16, 23]];
+    g.fillStyle(0xffaa00, 0.85);
+    poly(g, points);
+    g.fillPath();
+    g.lineStyle(2, COLORS.white, 1);
+    poly(g, points);
+    g.strokePath();
+    g.lineStyle(1.5, COLORS.orange, 1);
+    g.lineBetween(8, 13, 25, 13);
+  });
+
+  // Ship Variant: Tri-Vector Array
+  make(scene, 'player_trivector', 28, 28, (g) => {
+    const points = [[27, 14], [16, 2], [6, 8], [2, 14], [6, 20], [16, 26]];
+    g.fillStyle(0x39ff14, 0.85);
+    poly(g, points);
+    g.fillPath();
+    g.lineStyle(2, COLORS.white, 1);
+    poly(g, points);
+    g.strokePath();
+    g.lineStyle(1.5, COLORS.cyan, 1);
+    g.lineBetween(6, 8, 20, 14);
+    g.lineBetween(6, 20, 20, 14);
+  });
+
+  // Upgrade Halo: Aegis Defensive Shield Ring
+  make(scene, 'halo_aegis', 44, 44, (g) => {
+    const hex = [];
+    for (let i = 0; i < 6; i++) {
+      const a = (i * Math.PI) / 3;
+      hex.push([22 + Math.cos(a) * 19, 22 + Math.sin(a) * 19]);
+    }
+    g.lineStyle(1.5, COLORS.green, 0.85);
+    poly(g, hex);
+    g.strokePath();
+    g.fillStyle(COLORS.white, 1);
+    for (const [hx, hy] of hex) g.fillCircle(hx, hy, 2);
+  });
+
+  // Upgrade Halo: Kinetic Ramming Spikes Ring
+  make(scene, 'halo_kinetic', 44, 44, (g) => {
+    const star = starPoints(22, 22, 20, 15, 6);
+    g.lineStyle(1.5, COLORS.orange, 0.85);
+    poly(g, star);
+    g.strokePath();
+    g.fillStyle(COLORS.yellow, 0.9);
+    for (let i = 0; i < star.length; i += 2) {
+      g.fillCircle(star[i][0], star[i][1], 2);
+    }
+  });
+
+  // Upgrade Halo: Overclocked Plasma / Accelerator Ring
+  make(scene, 'halo_overclock', 44, 44, (g) => {
+    g.lineStyle(1.5, COLORS.cyan, 0.8);
+    g.strokeCircle(22, 22, 18);
+    g.lineStyle(1, COLORS.magenta, 0.9);
+    g.strokeCircle(22, 22, 14);
+    const star = starPoints(22, 22, 19, 13, 4);
+    g.lineStyle(1, COLORS.white, 0.95);
+    poly(g, star);
+    g.strokePath();
+  });
+
   make(scene, 'bouncer', 24, 24, (g) => {
     const points = [[12, 1], [23, 12], [12, 23], [1, 12]];
     g.fillStyle(COLORS.cyan, 0.9);

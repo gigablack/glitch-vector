@@ -24,6 +24,7 @@ export class AudioEngine {
     this.breakMode = false;
     this.wave = 1;
     this.bpm = 120;
+    this.bossMode = false;
     this.step = 0;
     this.bar = 0;
     this.nextTime = 0;
@@ -33,6 +34,12 @@ export class AudioEngine {
       [87.31, 110.0, 130.81],
       [130.81, 164.81, 196.0],
       [98.0, 123.47, 146.83]
+    ];
+    this.bossChords = [
+      [55.0, 65.41, 82.41],   // A minor
+      [43.65, 55.0, 65.41],   // F minor
+      [65.41, 77.78, 98.0],   // C minor
+      [48.99, 58.27, 73.42]   // G minor
     ];
   }
 
@@ -106,8 +113,19 @@ export class AudioEngine {
     this.updateBpm();
   }
 
+  setBossMode(on) {
+    this.bossMode = !!on;
+    this.updateBpm();
+  }
+
   updateBpm() {
-    this.bpm = this.glitch ? 160 : Math.min(150, 120 + (this.wave - 1) * 2);
+    if (this.glitch) {
+      this.bpm = 162;
+    } else if (this.bossMode) {
+      this.bpm = 152;
+    } else {
+      this.bpm = Math.min(142, 120 + (this.wave - 1) * 2);
+    }
   }
 
   setGlitch(on) {
@@ -180,16 +198,26 @@ export class AudioEngine {
   }
 
   scheduleStep(step, time) {
-    const chord = this.chords[this.bar];
+    const chord = this.bossMode ? this.bossChords[this.bar] : this.chords[this.bar];
     if (!this.breakMode) {
-      if (step % 4 === 0) this.kick(time);
-      if (step === 4 || step === 12) this.snare(time);
-      if (step === 2 || step === 6 || step === 10 || step === 14) this.hat(time);
-      if (step % 2 === 0) this.bass(time, chord[0] / 2);
+      if (this.bossMode) {
+        // High-adrenaline driving Darksynth beat
+        if (step % 4 === 0) this.kick(time, 175, 34);
+        if (step === 4 || step === 12) this.snare(time, 0.22);
+        else if (step === 14) this.snare(time, 0.1);
+        this.hat(time, step % 2 === 0 ? 0.05 : 0.03);
+        const bassFreq = (step % 2 === 0 ? chord[0] : chord[1]) / 2;
+        this.bass(time, bassFreq);
+      } else {
+        if (step % 4 === 0) this.kick(time);
+        if (step === 4 || step === 12) this.snare(time);
+        if (step === 2 || step === 6 || step === 10 || step === 14) this.hat(time);
+        if (step % 2 === 0) this.bass(time, chord[0] / 2);
+      }
     }
     const notes = [0, 1, 2, 1];
-    const freq = chord[notes[step % 4]] * 2;
-    this.arp(time, freq, this.breakMode ? 0.03 : 0.055);
+    const freq = chord[notes[step % 4]] * (this.bossMode ? 2.5 : 2);
+    this.arp(time, freq, this.breakMode ? 0.03 : (this.bossMode ? 0.075 : 0.055));
   }
 
   tone(type, f0, time, dur, gain, dest, f1) {
@@ -226,26 +254,120 @@ export class AudioEngine {
     src.stop(time + dur + 0.02);
   }
 
-  kick(time) {
-    this.tone('sine', 150, time, 0.25, 0.9, this.musicBus, 45);
+  kick(time, f0 = 150, f1 = 45) {
+    this.tone('sine', f0, time, 0.25, 0.9, this.musicBus, f1);
     this.beats.push(time);
   }
 
-  snare(time) {
-    this.noiseBurst(time, 0.12, 0.18, 1200, 'highpass', this.musicBus);
+  snare(time, gain = 0.18) {
+    this.noiseBurst(time, 0.12, gain, 1200, 'highpass', this.musicBus);
     this.tone('triangle', 180, time, 0.08, 0.08, this.musicBus, 120);
   }
 
-  hat(time) {
-    this.noiseBurst(time, 0.03, 0.045, 6000, 'highpass', this.musicBus);
+  hat(time, gain = 0.045) {
+    this.noiseBurst(time, 0.03, gain, 6000, 'highpass', this.musicBus);
   }
 
   bass(time, freq) {
-    this.tone('sawtooth', freq, time, 0.18, 0.1, this.bassFilter);
+    this.tone('sawtooth', freq, time, 0.18, 0.12, this.bassFilter);
   }
 
   arp(time, freq, gain) {
     this.tone('square', freq, time, 0.06, gain, this.musicBus);
+  }
+
+  bossRoar(archetype = 'core') {
+    if (!this.ctx || this.ctx.state !== 'running') return;
+    const t = this.ctx.currentTime + 0.005;
+
+    // 1. FM Modulated guttural carrier
+    const osc = this.ctx.createOscillator();
+    const mod = this.ctx.createOscillator();
+    const modGain = this.ctx.createGain();
+    const env = this.ctx.createGain();
+
+    osc.type = 'sawtooth';
+    mod.type = 'sawtooth';
+
+    let fStart = 90;
+    let fPeak = 320;
+    let fEnd = 30;
+    let modRate = 32;
+
+    if (archetype === 'worm') {
+      fStart = 60;
+      fPeak = 180;
+      fEnd = 24;
+      modRate = 22;
+    } else if (archetype === 'dragon') {
+      fStart = 110;
+      fPeak = 460;
+      fEnd = 45;
+      modRate = 42;
+    }
+
+    osc.frequency.setValueAtTime(fStart, t);
+    osc.frequency.exponentialRampToValueAtTime(fPeak, t + 0.22);
+    osc.frequency.exponentialRampToValueAtTime(fEnd, t + 0.85);
+
+    mod.frequency.setValueAtTime(modRate, t);
+    mod.frequency.linearRampToValueAtTime(modRate * 1.5, t + 0.4);
+    mod.frequency.linearRampToValueAtTime(10, t + 0.85);
+
+    modGain.gain.setValueAtTime(70, t);
+    modGain.gain.exponentialRampToValueAtTime(140, t + 0.3);
+    modGain.gain.exponentialRampToValueAtTime(5, t + 0.85);
+
+    mod.connect(modGain);
+    modGain.connect(osc.frequency);
+
+    const bpf = this.ctx.createBiquadFilter();
+    bpf.type = 'bandpass';
+    bpf.Q.value = 4.2;
+    bpf.frequency.setValueAtTime(220, t);
+    bpf.frequency.exponentialRampToValueAtTime(950, t + 0.35);
+    bpf.frequency.exponentialRampToValueAtTime(90, t + 0.85);
+
+    env.gain.setValueAtTime(0.001, t);
+    env.gain.exponentialRampToValueAtTime(0.38, t + 0.08);
+    env.gain.exponentialRampToValueAtTime(0.001, t + 0.9);
+
+    osc.connect(bpf);
+    bpf.connect(env);
+    env.connect(this.sfxBus);
+
+    osc.start(t);
+    mod.start(t);
+    osc.stop(t + 0.92);
+    mod.stop(t + 0.92);
+
+    // 2. Heavy Noise Rumble Layer
+    this.noiseBurst(t, 0.75, 0.24, 1400, 'bandpass', this.sfxBus);
+    // 3. Sub-bass ground impact
+    this.tone('sine', 75, t, 0.65, 0.3, this.sfxBus, 25);
+  }
+
+  bossPhaseAlert() {
+    if (!this.ctx || this.ctx.state !== 'running') return;
+    const t = this.ctx.currentTime + 0.005;
+    this.tone('sawtooth', 220, t, 0.18, 0.16, this.sfxBus, 550);
+    this.tone('sawtooth', 330, t + 0.1, 0.22, 0.16, this.sfxBus, 880);
+    this.noiseBurst(t, 0.25, 0.15, 2600, 'highpass');
+  }
+
+  microBoom(t = null) {
+    const time = t || (this.ctx ? this.ctx.currentTime + 0.005 : 0);
+    const rndPitch = 120 + Math.random() * 200;
+    this.noiseBurst(time, 0.12, 0.18, 1200, 'lowpass');
+    this.tone('sine', rndPitch, time, 0.12, 0.16, this.sfxBus, 40);
+  }
+
+  bossTitanExplosion() {
+    if (!this.ctx || this.ctx.state !== 'running') return;
+    const t = this.ctx.currentTime + 0.005;
+    this.tone('sine', 130, t, 0.85, 0.48, this.sfxBus, 18);
+    this.noiseBurst(t, 0.7, 0.38, 900, 'lowpass');
+    this.tone('sawtooth', 420, t, 0.45, 0.22, this.sfxBus, 35);
   }
 
   sfx(name) {
@@ -284,6 +406,18 @@ export class AudioEngine {
         break;
       case 'boss':
         this.tone('sawtooth', 60, t, 0.4, 0.1, this.sfxBus, 30);
+        break;
+      case 'roar':
+        this.bossRoar();
+        break;
+      case 'phase':
+        this.bossPhaseAlert();
+        break;
+      case 'micro_boom':
+        this.microBoom();
+        break;
+      case 'boss_death':
+        this.bossTitanExplosion();
         break;
       default:
         break;

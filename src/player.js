@@ -7,6 +7,10 @@ export class Player {
     this.spr = scene.add.sprite(CFG.PLAYER.x, CFG.PLAYER.y, 'player')
       .setDepth(30)
       .setBlendMode(Phaser.BlendModes.ADD);
+    this.haloSpr = scene.add.sprite(CFG.PLAYER.x, CFG.PLAYER.y, 'halo_aegis')
+      .setDepth(28)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setVisible(false);
     this.maxShields = CFG.PLAYER.shields;
     this.speedMult = 1;
     this.maxBulletsBonus = 0;
@@ -59,12 +63,16 @@ export class Player {
     this.phaseInvulnTimer = 0;
     this.needRetaliationEmp = false;
     this.dead = false;
-    this.spr.setPosition(this.x, this.y)
+    this.spr.setTexture('player')
+      .setPosition(this.x, this.y)
       .setVisible(true)
       .setAlpha(1)
       .setScale(1)
       .clearTint()
       .setRotation(-Math.PI / 2);
+    if (this.haloSpr) {
+      this.haloSpr.setVisible(false);
+    }
   }
 
   setModifiers(modifiers = {}) {
@@ -111,6 +119,7 @@ export class Player {
 
     if (this.dead) {
       this.spr.setVisible(false);
+      if (this.haloSpr) this.haloSpr.setVisible(false);
       return;
     }
 
@@ -212,6 +221,61 @@ export class Player {
       this.invuln = Math.max(0, this.invuln - dt * 1000);
       this.spr.setAlpha(Math.floor(this.invuln / 100) % 2 === 0 ? 1 : 0.25);
     }
+
+    this.updateVisuals(dt);
+  }
+
+  updateVisuals(dt) {
+    if (this.dead) {
+      if (this.haloSpr) this.haloSpr.setVisible(false);
+      return;
+    }
+
+    // 1. Morph hull shape based on primary weapon & combat traits
+    let targetTexture = 'player';
+    if (this.rammingDamage) {
+      targetTexture = 'player_ram';
+    } else if (this.bulletPierce || this.fireMode === 'pierce') {
+      targetTexture = 'player_railgun';
+    } else if (this.fireMode === 'spread') {
+      targetTexture = 'player_spread';
+    } else if (this.fireMode === 'burst') {
+      targetTexture = 'player_burst';
+    } else if (this.fireMode === 'trivector') {
+      targetTexture = 'player_trivector';
+    }
+
+    if (this.spr.texture && this.spr.texture.key !== targetTexture) {
+      this.spr.setTexture(targetTexture);
+    }
+
+    // 2. Halo / Aura selection & animation
+    let hasHalo = false;
+    let haloTexture = 'halo_aegis';
+
+    if (this.phaseInvulnTimer > 0 || this.maxShields > 3 || this.naniteRepair) {
+      hasHalo = true;
+      haloTexture = 'halo_aegis';
+    } else if (this.overdriveTimer > 0 || this.rammingDamage) {
+      hasHalo = true;
+      haloTexture = 'halo_kinetic';
+    } else if (this.unlimitedAmmoTimer > 0 || this.fireCdMult < 0.8) {
+      hasHalo = true;
+      haloTexture = 'halo_overclock';
+    }
+
+    if (hasHalo && this.haloSpr) {
+      if (this.haloSpr.texture && this.haloSpr.texture.key !== haloTexture) {
+        this.haloSpr.setTexture(haloTexture);
+      }
+      this.haloSpr.setVisible(true);
+      this.haloSpr.setPosition(this.x, this.y);
+      this.haloSpr.rotation += dt * 2.8;
+      const pulse = 0.95 + Math.sin(Date.now() * 0.008) * 0.12;
+      this.haloSpr.setScale(pulse);
+    } else if (this.haloSpr) {
+      this.haloSpr.setVisible(false);
+    }
   }
 
   resolveCube(cube) {
@@ -274,6 +338,7 @@ export class Player {
       this.shields = 0;
       this.dead = true;
       this.spr.setVisible(false);
+      if (this.haloSpr) this.haloSpr.setVisible(false);
     }
     return true;
   }

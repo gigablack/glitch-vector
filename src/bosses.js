@@ -87,7 +87,13 @@ class CoreBoss {
 
   update(dt, now, player, speedMult, shoot, glitchDirector) {
     this.time += dt * speedMult;
-    this.phase = this.hp <= this.maxHp * 0.45 ? 2 : 1;
+    const newPhase = this.hp <= this.maxHp * 0.45 ? 2 : 1;
+    if (newPhase > this.phase) {
+      this.phase = newPhase;
+      if (this.scene && this.scene.events) {
+        this.scene.events.emit('boss:phase', { boss: this, phase: newPhase });
+      }
+    }
 
     // Wide dynamic orbit across the screen (never stationary)
     const orbitSpeed = this.phase === 2 ? 1.4 : 0.95;
@@ -219,7 +225,13 @@ class WormBoss {
 
   update(dt, now, player, speedMult, shoot, glitchDirector) {
     this.time += dt * speedMult;
-    this.phase = this.hp <= this.maxHp * 0.45 ? 2 : 1;
+    const newPhase = this.hp <= this.maxHp * 0.45 ? 2 : 1;
+    if (newPhase > this.phase) {
+      this.phase = newPhase;
+      if (this.scene && this.scene.events) {
+        this.scene.events.emit('boss:phase', { boss: this, phase: newPhase });
+      }
+    }
     const currentSpeed = (this.phase === 2 ? 290 : 220) * speedMult;
 
     // Steer head smoothly towards target
@@ -381,7 +393,13 @@ class DragonBoss {
 
   update(dt, now, player, speedMult, shoot, glitchDirector) {
     this.time += dt * speedMult;
-    this.phase = this.hp <= this.maxHp * 0.35 ? 3 : (this.hp <= this.maxHp * 0.65 ? 2 : 1);
+    const newPhase = this.hp <= this.maxHp * 0.35 ? 3 : (this.hp <= this.maxHp * 0.65 ? 2 : 1);
+    if (newPhase > this.phase) {
+      this.phase = newPhase;
+      if (this.scene && this.scene.events) {
+        this.scene.events.emit('boss:phase', { boss: this, phase: newPhase });
+      }
+    }
 
     // Movement: Figure-8 sweep across arena
     if (this.isDiving) {

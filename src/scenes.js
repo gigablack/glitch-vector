@@ -169,6 +169,7 @@ export class GameScene extends Phaser.Scene {
     this.burstQueue = 0;
     this.burstTimer = 0;
     this.burstAngle = 0;
+    this.bossDying = false;
 
     this.bus.on('pause:toggle', this.togglePause, this);
     this.bus.on('run:restart', this.restartRun, this);
@@ -176,11 +177,24 @@ export class GameScene extends Phaser.Scene {
     this.bus.on('boosters:pick', (data) => this.onBoosterPicked(data.card), this);
     this.bus.on('boosters:skip', this.onBoosterSkipped, this);
 
+    this.events.on('boss:phase', ({ boss, phase }) => {
+      const bx = boss.spr ? boss.spr.x : (boss.x || 640);
+      const by = boss.spr ? boss.spr.y : (boss.y || 250);
+      this.audio.bossRoar(boss.type);
+      this.audio.bossPhaseAlert();
+      this.fx.shake(0.016, 450);
+      this.vignette.triggerDamage(0.65);
+      this.fx.burst(bx, by, COLORS.danger, 25);
+      this.fx.text(bx, by - 45, `¡FURIA: FASE ${phase}!`, '#ff0055');
+      this.ebullets.clear();
+    });
+
     this.events.once('shutdown', () => {
       this.bus.off('pause:toggle', this.togglePause, this);
       this.bus.off('run:restart', this.restartRun, this);
       this.bus.off('boosters:pick');
       this.bus.off('boosters:skip', this.onBoosterSkipped, this);
+      this.events.off('boss:phase');
     });
 
     if (!this.scene.isActive('UI')) this.scene.launch('UI');
@@ -190,12 +204,13 @@ export class GameScene extends Phaser.Scene {
   resetRun() {
     this.score = 0;
     this.best = readBest();
-    this.wave = 1;
+    this.wave = 0;
     this.mult = 1;
-    this.phase = 'intro';
+    this.phase = 'booster';
     this.paused = false;
     this.dead = false;
     this.over = false;
+    this.bossDying = false;
     this.deathTimer = 0;
     this.waveTimer = 0;
     this.breakTimer = 0;
@@ -226,12 +241,21 @@ export class GameScene extends Phaser.Scene {
     this.enemySlowTimer = 0;
     this.audio.setPaused(false);
     this.audio.setGlitch(false);
-    this.audio.setBreak(false);
+    this.audio.setBreak(true);
+    this.audio.setBossMode(false);
     this.audio.startMusic();
 
     this.bus.emit('run:start');
     this.bus.emit('pause:changed', { paused: false });
-    this.startWave();
+
+    // Initial starter boost selection before Wave 1
+    const cards = this.boosters.generateOffer(3);
+    this.time.delayedCall(250, () => {
+      if (!this.dead && !this.over) {
+        this.bus.emit('boosters:show', { cards });
+      }
+    });
+
     this.syncAll();
   }
 
@@ -241,6 +265,7 @@ export class GameScene extends Phaser.Scene {
 
   startWave() {
     this.phase = 'intro';
+    this.bossDying = false;
     this.waveTimer = 0;
     this.breakTimer = 0;
     this.spawnAccum = 0;
@@ -263,6 +288,7 @@ export class GameScene extends Phaser.Scene {
 
     this.audio.setWave(this.wave);
     this.audio.setBreak(false);
+    this.audio.setBossMode(!!this.wavePlan.boss);
     this.bus.emit('wave:intro', { wave: this.wave });
     this.syncSequence();
     this.syncHud();
@@ -281,7 +307,11 @@ export class GameScene extends Phaser.Scene {
     this.obstacles.setRotationMultiplier(this.boosters.stats.obstacleSpeedMult);
     this.vignette.setTunnelVision(this.boosters.stats.tunnelVision);
     this.audio.sfx('combo');
-    this.wave += 1;
+    if (this.wave === 0) {
+      this.wave = 1;
+    } else {
+      this.wave += 1;
+    }
     this.startWave();
   }
 
@@ -289,7 +319,11 @@ export class GameScene extends Phaser.Scene {
     this.score += 500;
     this.fx.text(640, 360, '+500 SKIP BONUS', '#00ffff');
     this.audio.sfx('combo');
-    this.wave += 1;
+    if (this.wave === 0) {
+      this.wave = 1;
+    } else {
+      this.wave += 1;
+    }
     this.startWave();
   }
 
@@ -716,20 +750,24 @@ export class GameScene extends Phaser.Scene {
 
   hitBoss() {
     const boss = this.bosses.boss;
-    if (!boss) return;
+    if (!boss || this.bossDying) return;
     this.vignette.triggerHit(0.45);
     this.audio.sfx('hit');
     const dead = this.bosses.hit(1, this.time.now);
-    this.fx.burst(boss.spr.x, boss.spr.y, COLORS.magenta, 4);
-    if (dead) this.killBoss();
+    const bx = boss.spr ? boss.spr.x : (boss.x || 640);
+    const by = boss.spr ? boss.spr.y : (boss.y || 250);
+    this.fx.burst(bx, by, COLORS.magenta, 4);
+    if (dead) this.startBossDeathSequence();
     else this.syncHud();
   }
 
-  killBoss() {
+  startBossDeathSequence() {
     const boss = this.bosses.boss;
-    if (!boss) return;
-    const x = boss.spr.x;
-    const y = boss.spr.y;
+    if (!boss || this.bossDying) return;
+    this.bossDying = true;
+    const bx = boss.spr ? boss.spr.x : (boss.x || 640);
+    const by = boss.spr ? boss.spr.y : (boss.y || 250);
+
     const points = scoreKill({
       base: 0,
       multiplier: this.mult,
@@ -739,23 +777,62 @@ export class GameScene extends Phaser.Scene {
       wave: this.wave
     }).points;
 
-    // Boss guaranteed drops
-    this.pickups.spawn(x - 30, y, 'shield');
-    this.pickups.spawn(x + 30, y, 'ammo');
+    // Act I: Cascading Micro-Explosions across boss anatomy
+    let booms = 0;
+    this.time.addEvent({
+      delay: 85,
+      repeat: 11,
+      callback: () => {
+        booms++;
+        const rx = bx + (this.rng() - 0.5) * 110;
+        const ry = by + (this.rng() - 0.5) * 110;
+        this.fx.burst(rx, ry, booms % 2 === 0 ? COLORS.orange : COLORS.magenta, 18);
+        this.fx.shake(0.007, 80);
+        this.audio.microBoom();
+        if (boss.spr) {
+          boss.spr.setTint(booms % 2 === 0 ? 0xffffff : 0xff3366);
+        }
+      }
+    });
 
-    this.bosses.killBoss();
-    this.ebullets.clear();
-    this.score += points;
-    if (this.score > this.best) {
-      this.best = this.score;
-      writeBest(this.best);
-    }
-    this.fx.burst(x, y, COLORS.magenta, 80);
-    this.fx.burst(x, y, COLORS.cyan, 40);
-    this.fx.shake(0.02, 600);
-    this.fx.text(x, y, `+${points}`, '#ff00ff');
-    this.audio.sfx('explosion');
-    this.syncHud();
+    // Act II: Bullet-time time dilation
+    this.time.delayedCall(950, () => {
+      this.time.timeScale = 0.35;
+      this.vignette.triggerDamage(0.85);
+    });
+
+    // Act III: Titan Nuclear Detonation
+    this.time.delayedCall(1250, () => {
+      this.time.timeScale = 1.0;
+      this.audio.setBossMode(false);
+      this.audio.bossTitanExplosion();
+
+      // Huge radial particle bursts
+      this.fx.burst(bx, by, COLORS.orange, 75);
+      this.fx.burst(bx, by, COLORS.cyan, 50);
+      this.fx.burst(bx, by, COLORS.magenta, 50);
+      this.fx.shake(0.024, 750);
+      this.fx.text(bx, by - 40, `¡JEFE ANIQUILADO! +${points}`, '#ffdd00');
+
+      // Boss guaranteed drops
+      this.pickups.spawn(bx - 35, by, 'shield');
+      this.pickups.spawn(bx + 35, by, 'ammo');
+
+      this.bosses.killBoss();
+      this.ebullets.clear();
+      this.score += points;
+      if (this.score > this.best) {
+        this.best = this.score;
+        writeBest(this.best);
+      }
+      this.syncHud();
+      this.bossDying = false;
+      this.checkWaveClear();
+    });
+  }
+
+  killBoss() {
+    this.startBossDeathSequence();
   }
 
   onPlayerHit() {
@@ -827,7 +904,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   checkWaveClear() {
-    if (this.dead || this.phase !== 'active') return;
+    if (this.dead || this.phase !== 'active' || this.bossDying) return;
     if (this.spawnQueue.length || this.enemies.countActive() || this.bosses.boss) return;
 
     this.phase = 'booster';

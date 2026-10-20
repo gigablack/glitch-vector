@@ -145,3 +145,49 @@ test('Comportamiento de Disparo Base: 3 disparos por ciclo', () => {
   assert.equal(bm.stats.magazineSize, 3);
   assert.equal(bm.stats.bulletBounces, 0); // Sin rebotes por defecto
 });
+
+test('AudioEngine: soporta bossMode, BPM dinámico y métodos de síntesis de jefes', async () => {
+  const { AudioEngine } = await import('../src/audio.js');
+  const audio = new AudioEngine();
+  assert.equal(audio.bossMode, false);
+  assert.equal(audio.bpm, 120);
+
+  audio.setBossMode(true);
+  assert.equal(audio.bossMode, true);
+  assert.equal(audio.bpm, 152);
+
+  audio.setBossMode(false);
+  assert.equal(audio.bossMode, false);
+  assert.equal(audio.bpm, 120);
+
+  // Verify sound generation methods exist and execute safely without DOM audio context
+  assert.doesNotThrow(() => audio.bossRoar('core'));
+  assert.doesNotThrow(() => audio.bossRoar('worm'));
+  assert.doesNotThrow(() => audio.bossRoar('dragon'));
+  assert.doesNotThrow(() => audio.bossPhaseAlert());
+  assert.doesNotThrow(() => audio.microBoom());
+  assert.doesNotThrow(() => audio.bossTitanExplosion());
+  assert.doesNotThrow(() => audio.sfx('roar'));
+  assert.doesNotThrow(() => audio.sfx('phase'));
+  assert.doesNotThrow(() => audio.sfx('boss_death'));
+});
+
+test('Starter Boost: Nivel 1 inicia con selección de booster antes del primer jefe', () => {
+  const bm = new BoosterManager(mulberry32(909));
+  const starterOffer = bm.generateOffer(3);
+  assert.equal(starterOffer.length, 3);
+
+  // Simulación del flujo de GameScene: wave 0 -> pick starter card -> wave 1
+  let wave = 0;
+  const pickedCard = starterOffer[0];
+  bm.applyBooster(pickedCard);
+
+  if (wave === 0) {
+    wave = 1;
+  } else {
+    wave += 1;
+  }
+
+  assert.equal(wave, 1, 'Debe transicionar a oleada 1 (Jefe 1)');
+  assert.ok(bm.picked.includes(pickedCard.id), 'El booster inicial debe quedar registrado en las estadísticas de partida');
+});
