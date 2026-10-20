@@ -12,6 +12,11 @@ import { TargetSequence } from './waves.js';
 import { GlitchDirector } from './glitch.js';
 import { FxSystem } from './fx.js';
 import { Hud } from './ui.js';
+import { BossController } from './bosses.js';
+import { ObstacleManager } from './obstacles.js';
+import { PickupManager } from './pickups.js';
+import { BoosterManager } from './boosters.js';
+import { VignetteSystem } from './vignette.js';
 
 function seedFromUrl() {
   const params = new URLSearchParams(window.location.search);
@@ -60,7 +65,7 @@ export class MenuScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     this.add.text(640, 342,
-      'WASD / ARROWS  MOVE\nMOUSE  AIM\nCLICK / SPACE  FIRE\nP / ESC  PAUSE     M  MUTE',
+      'MOUSE TO MOVE & AIM\nCLICK / SPACE  FIRE\nP / ESC  PAUSE     M  MUTE',
       {
         fontFamily: 'monospace',
         fontSize: '13px',
@@ -124,17 +129,18 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#000000');
 
     this.fx = new FxSystem(this, this.rng);
+    this.vignette = new VignetteSystem(this);
     this.enemies = new EnemyManager(this, this.rng);
+    this.bosses = new BossController(this, this.rng);
+    this.obstacles = new ObstacleManager(this, this.rng);
+    this.pickups = new PickupManager(this, this.rng);
+    this.boosters = new BoosterManager(this.rng);
+
     this.bullets = new BulletPool(this);
     this.ebullets = new EnemyBulletPool(this);
     this.player = new Player(this);
     this.sequence = new TargetSequence(this.rng);
     this.glitch = new GlitchDirector(this, this.audio, this.rng);
-
-    this.cube = this.add.image(CFG.CUBE.cx, CFG.CUBE.cy, 'cube')
-      .setDepth(5)
-      .setBlendMode(Phaser.BlendModes.ADD)
-      .setAlpha(0.9);
 
     this.keys = this.input.keyboard.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,SPACE');
     this.firing = false;
@@ -152,7 +158,7 @@ export class GameScene extends Phaser.Scene {
     this.inputState = { x: 0, y: 0 };
 
     this.input.on('pointerdown', () => {
-      if (this.paused || this.over || this.dead) return;
+      if (this.paused || this.over || this.dead || this.phase === 'booster') return;
       this.firing = true;
       this.tryFire();
     });
@@ -162,9 +168,13 @@ export class GameScene extends Phaser.Scene {
 
     this.bus.on('pause:toggle', this.togglePause, this);
     this.bus.on('run:restart', this.restartRun, this);
+    this.bus.on('glitch:start', () => this.obstacles.mutate());
+    this.bus.on('boosters:pick', (data) => this.onBoosterPicked(data.card), this);
+
     this.events.once('shutdown', () => {
       this.bus.off('pause:toggle', this.togglePause, this);
       this.bus.off('run:restart', this.restartRun, this);
+      this.bus.off('boosters:pick');
     });
 
     if (!this.scene.isActive('UI')) this.scene.launch('UI');
@@ -189,14 +199,23 @@ export class GameScene extends Phaser.Scene {
     this.firing = false;
     this.fireLockUntil = this.time.now + 250;
 
+    this.boosters.reset();
+    this.player.setModifiers(this.boosters.stats);
+    this.glitch.setModifiers(this.boosters.stats);
+    this.obstacles.setRotationMultiplier(this.boosters.stats.obstacleSpeedMult);
+    this.vignette.setTunnelVision(false);
+    this.vignette.clear();
+
     this.player.reset();
     this.bullets.clear();
     this.ebullets.clear();
     this.enemies.clear();
+    this.bosses.killBoss();
+    this.pickups.clear();
     this.fx.clear();
     this.glitch.reset();
     this.sequence.clear();
-    this.cube.setScale(1).setAlpha(0.9);
+    this.obstacles.reconfigure();
 
     this.audio.setPaused(false);
     this.audio.setGlitch(false);
@@ -219,8 +238,10 @@ export class GameScene extends Phaser.Scene {
     this.breakTimer = 0;
     this.spawnAccum = 0;
     this.enemies.clear();
+    this.bosses.killBoss();
     this.bullets.clear();
     this.ebullets.clear();
+    this.pickups.clear();
     this.glitch.forceEnd();
     this.sequence.clear();
 
@@ -241,10 +262,37 @@ export class GameScene extends Phaser.Scene {
     return this.sequence.clean(types);
   }
 
+  onBoosterPicked(card) {
+    this.boosters.applyBooster(card);
+    this.player.setModifiers(this.boosters.stats);
+    this.glitch.setModifiers(this.boosters.stats);
+    this.obstacles.setRotationMultiplier(this.boosters.stats.obstacleSpeedMult);
+    this.vignette.setTunnelVision(this.boosters.stats.tunnelVision);
+    this.audio.sfx('combo');
+    this.wave += 1;
+    this.startWave();
+  }
+
+  onCollectPickup(type, x, y) {
+    if (type === 'ammo') {
+      this.player.fireCd = 0;
+      this.fx.text(x, y, '+AMMO', '#00ffff');
+      this.audio.sfx('shoot');
+    } else if (type === 'shield') {
+      this.player.healShield(1);
+      this.fx.text(x, y, '+SHIELD', '#39ff14');
+      this.audio.sfx('shield');
+    }
+    this.vignette.triggerHit(0.2);
+    this.syncHud();
+  }
+
   update(time, delta) {
     if (this.paused) return;
     const dt = Math.min(delta, 50) / 1000;
     this.fx.update(dt, this.glitch.disorient, time);
+    this.obstacles.update(dt);
+    this.vignette.update(dt, this.player);
 
     if (this.over) return;
 
@@ -262,10 +310,13 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    if (this.phase === 'booster') return;
+
     const pointer = this.input.activePointer;
-    const aimX = pointer.worldX || this.player.x + 100;
-    const aimY = pointer.worldY || this.player.y;
-    this.player.update(dt, this.getInput(), aimX, aimY);
+    const aimX = pointer.worldX ?? (this.player.x + 100);
+    const aimY = pointer.worldY ?? this.player.y;
+    this.player.update(dt, this.getInput(), aimX, aimY, this.obstacles, this.glitch.invert);
+    this.pickups.update(dt, this.player, (type, x, y) => this.onCollectPickup(type, x, y));
 
     if (this.phase === 'intro') {
       this.waveTimer += delta;
@@ -273,7 +324,7 @@ export class GameScene extends Phaser.Scene {
         this.phase = 'active';
         this.spawnAccum = 0;
         if (this.wavePlan.boss) {
-          this.enemies.spawnBoss(this.wave, time);
+          this.bosses.spawnBoss(this.wave, time, this.boosters.stats.bossHpMult);
           this.audio.sfx('boss');
           this.fx.shake(0.008, 300);
         }
@@ -284,22 +335,21 @@ export class GameScene extends Phaser.Scene {
       this.glitch.update(delta, this.wave, true);
       this.updateFiring();
       this.spawnEnemies(time, delta);
-      this.bullets.update(dt, CFG.CUBE, CFG.PLAY);
+      this.bullets.update(dt, this.obstacles.primaryAABB, CFG.PLAY);
+      this.bosses.update(
+        dt, time, this.player, this.glitch.speedMult,
+        (x, y, vx, vy, k) => this.ebullets.spawn(x, y, vx, vy, k),
+        this.glitch
+      );
       this.enemies.update(
-        dt, time, this.player, this.glitch.speedMult, CFG.CUBE,
+        dt, time, this.player, this.glitch.speedMult, this.obstacles.primaryAABB,
         (x, y, vx, vy, kind) => this.ebullets.spawn(x, y, vx, vy, kind),
         this.wave
       );
-      this.ebullets.update(dt, CFG.PLAY, CFG.CUBE);
+      this.ebullets.update(dt, CFG.PLAY, this.obstacles.primaryAABB);
       this.collide();
       this.checkWaveClear();
       this.updateTelegraph();
-    } else if (this.phase === 'break') {
-      this.breakTimer += delta;
-      if (this.breakTimer >= CFG.WAVE.break) {
-        this.wave += 1;
-        this.startWave();
-      }
     }
 
     this.pulseCube();
@@ -332,7 +382,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   tryFire() {
-    if (this.paused || this.over || this.dead || this.time.now < this.fireLockUntil) return;
+    if (this.paused || this.over || this.dead || this.time.now < this.fireLockUntil || this.phase === 'booster') return;
     const active = this.bullets.activeCount();
     if (this.player.canFire(active)) {
       const angle = this.player.spr.rotation;
@@ -341,7 +391,7 @@ export class GameScene extends Phaser.Scene {
         this.audio.sfx('shoot');
         this.fx.burst(this.player.muzzleX, this.player.muzzleY, COLORS.cyan, 2);
       }
-    } else if (active >= CFG.PLAYER.maxBullets && this.player.fireCd <= 0) {
+    } else if (active >= (CFG.PLAYER.maxBullets + this.player.maxBulletsBonus) && this.player.fireCd <= 0) {
       this.player.fireCd = 150;
       this.audio.sfx('dry');
       this.bus.emit('ammo:empty');
@@ -361,6 +411,8 @@ export class GameScene extends Phaser.Scene {
 
   collide() {
     const player = this.player;
+
+    // Bullets vs Boss, Obstacles, and Enemies
     this.bullets.forEach((bullet) => {
       if (!bullet.active) return;
       const bx = bullet.spr.x;
@@ -368,13 +420,21 @@ export class GameScene extends Phaser.Scene {
       const px = bullet.prevX ?? bx;
       const py = bullet.prevY ?? by;
 
-      const boss = this.enemies.boss;
-      if (boss && segDist2(boss.spr.x, boss.spr.y, px, py, bx, by) < (boss.r + CFG.BULLET.r) ** 2) {
+      // Bullet vs Boss
+      if (this.bosses.boss && this.bosses.checkBulletHit(bx, by, CFG.BULLET.r)) {
         this.bullets.release(bullet);
         this.hitBoss();
         return;
       }
 
+      // Bullet vs Dynamic Obstacles
+      if (this.obstacles.checkBulletHit(bx, by, CFG.BULLET.r)) {
+        this.bullets.release(bullet);
+        this.fx.burst(bx, by, COLORS.cyan, 4);
+        return;
+      }
+
+      // Bullet vs Regular Enemies
       this.enemies.forEachActive((enemy) => {
         if (!bullet.active) return;
         if (segDist2(enemy.spr.x, enemy.spr.y, px, py, bx, by) < (enemy.r + CFG.BULLET.r) ** 2) {
@@ -384,6 +444,7 @@ export class GameScene extends Phaser.Scene {
       });
     });
 
+    // Enemies vs Player
     this.enemies.forEachActive((enemy) => {
       if (this.dead) return;
       const px = enemy.prevX ?? enemy.spr.x;
@@ -395,15 +456,14 @@ export class GameScene extends Phaser.Scene {
       }
     });
 
-    const boss = this.enemies.boss;
-    if (boss && !this.dead) {
-      const dx = player.x - boss.spr.x;
-      const dy = player.y - boss.spr.y;
-      if (dx * dx + dy * dy < (boss.r + CFG.PLAYER.hitR) ** 2) {
+    // Boss vs Player (Boss ignores obstacles!)
+    if (this.bosses.boss && !this.dead) {
+      if (this.bosses.checkPlayerCollision(player)) {
         if (player.damage()) this.onPlayerHit();
       }
     }
 
+    // Enemy bullets vs Player
     this.ebullets.forEach((bullet) => {
       if (this.dead) return;
       const px = bullet.prevX ?? bullet.spr.x;
@@ -420,6 +480,7 @@ export class GameScene extends Phaser.Scene {
     enemy.hp -= 1;
     enemy.flashUntil = this.time.now + 60;
     enemy.spr.setTint(0xffffff);
+    this.vignette.triggerHit(0.35);
     this.audio.sfx('hit');
     this.fx.burst(enemy.spr.x, enemy.spr.y, enemy.def.color, 4);
     if (enemy.hp <= 0) this.killEnemy(enemy, byPlayer);
@@ -436,6 +497,11 @@ export class GameScene extends Phaser.Scene {
     this.fx.burst(x, y, def.color, type === 'tank' ? 24 : 12);
     this.audio.sfx('explosion');
 
+    // Chance to spawn ammo or shield pickup
+    if (byPlayer && this.rng() < 0.28) {
+      this.pickups.spawn(x, y);
+    }
+
     if (byPlayer && type === 'splitter') {
       const speed = Math.min(420, 220 + (this.wave - 1) * 10);
       const base = Math.atan2(vy, vx);
@@ -451,7 +517,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   awardKill(type, base, x, y) {
-    const glitchMult = this.glitch.scoreMult;
+    const glitchMult = this.glitch.scoreMult + (this.boosters.stats.glitchScoreBonus || 0);
     const hasSequence = this.sequence.queue.length > 0;
     let points;
     let correct = false;
@@ -469,7 +535,7 @@ export class GameScene extends Phaser.Scene {
         isBoss: false,
         wave: this.wave
       });
-      points = result.points;
+      points = Math.round(result.points * (1 + (this.boosters.stats.scoreMultBonus || 0)));
       this.mult = result.multiplier;
 
       if (correct) {
@@ -495,19 +561,18 @@ export class GameScene extends Phaser.Scene {
   }
 
   hitBoss() {
-    const boss = this.enemies.boss;
+    const boss = this.bosses.boss;
     if (!boss) return;
-    boss.hp -= 1;
-    boss.flashUntil = this.time.now + 60;
-    boss.spr.setTint(0xffffff);
+    this.vignette.triggerHit(0.45);
     this.audio.sfx('hit');
+    const dead = this.bosses.hit(1, this.time.now);
     this.fx.burst(boss.spr.x, boss.spr.y, COLORS.magenta, 4);
-    if (boss.hp <= 0) this.killBoss();
+    if (dead) this.killBoss();
     else this.syncHud();
   }
 
   killBoss() {
-    const boss = this.enemies.boss;
+    const boss = this.bosses.boss;
     if (!boss) return;
     const x = boss.spr.x;
     const y = boss.spr.y;
@@ -519,7 +584,12 @@ export class GameScene extends Phaser.Scene {
       isBoss: true,
       wave: this.wave
     }).points;
-    this.enemies.killBoss();
+
+    // Boss guaranteed drops
+    this.pickups.spawn(x - 30, y, 'shield');
+    this.pickups.spawn(x + 30, y, 'ammo');
+
+    this.bosses.killBoss();
     this.ebullets.clear();
     this.score += points;
     if (this.score > this.best) {
@@ -536,7 +606,8 @@ export class GameScene extends Phaser.Scene {
 
   onPlayerHit() {
     this.fx.shake(0.006, 150);
-    this.fx.flash(255, 0, 0, 120);
+    // Call of Duty style diffused red border shadow
+    this.vignette.triggerDamage(0.95);
     this.audio.sfx('shield');
     this.syncHud();
     if (this.player.dead) this.beginDeath();
@@ -556,9 +627,9 @@ export class GameScene extends Phaser.Scene {
 
   checkWaveClear() {
     if (this.dead || this.phase !== 'active') return;
-    if (this.spawnQueue.length || this.enemies.countActive() || this.enemies.boss) return;
-    this.phase = 'break';
-    this.breakTimer = 0;
+    if (this.spawnQueue.length || this.enemies.countActive() || this.bosses.boss) return;
+
+    this.phase = 'booster';
     const bonus = CFG.WAVE_BONUS * this.wave;
     this.score += bonus;
     if (this.score > this.best) {
@@ -572,11 +643,19 @@ export class GameScene extends Phaser.Scene {
     this.audio.sfx('wave');
     this.bus.emit('wave:clear', { wave: this.wave, bonus });
     this.syncHud();
+
+    // Offer 3 cards
+    const cards = this.boosters.generateOffer(3);
+    this.time.delayedCall(1200, () => {
+      if (!this.dead && !this.over) {
+        this.bus.emit('boosters:show', { cards });
+      }
+    });
   }
 
   updateTelegraph() {
     this.fx.clearLine();
-    const boss = this.enemies.boss;
+    const boss = this.bosses.boss;
     if (boss && boss.pending) {
       this.fx.line(boss.spr.x, boss.spr.y, this.player.x, this.player.y, COLORS.magenta, 0.5);
     }
@@ -588,20 +667,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   pulseCube() {
-    if (this.glitch.active === 'overclock') this.cube.setTint(COLORS.magenta);
-    else this.cube.clearTint();
     if (!this.audio.pollBeat()) return;
-    this.cube.setScale(1.06);
-    this.tweens.add({
-      targets: this.cube,
-      scale: 1,
-      duration: 120,
-      ease: 'Sine.out'
-    });
+    this.obstacles.pulse();
   }
 
   togglePause() {
-    if (this.over || this.dead) return;
+    if (this.over || this.dead || this.phase === 'booster') return;
     this.paused = !this.paused;
     this.firing = false;
     this.audio.setPaused(this.paused);
@@ -609,16 +680,19 @@ export class GameScene extends Phaser.Scene {
   }
 
   syncHud() {
-    const boss = this.enemies.boss;
+    const boss = this.bosses.boss;
     this.bus.emit('hud:update', {
       score: this.score,
       best: this.best,
       wave: this.wave,
       shields: this.player.shields,
+      maxShields: this.player.maxShields,
       mult: this.mult,
       bullets: this.bullets.activeCount(),
+      maxBullets: CFG.PLAYER.maxBullets + this.player.maxBulletsBonus,
       bossHp: boss ? Math.max(0, boss.hp) : 0,
-      bossMax: boss ? boss.maxHp : 0
+      bossMax: boss ? boss.maxHp : 0,
+      bossName: boss ? boss.name : ''
     });
   }
 
@@ -635,7 +709,6 @@ export class GameScene extends Phaser.Scene {
     });
     this.bus.emit('pause:changed', { paused: this.paused });
   }
-
 }
 
 export class UIScene extends Phaser.Scene {
@@ -656,6 +729,11 @@ export class UIScene extends Phaser.Scene {
       'sequence:lost': () => this.hud.sequenceLost(),
       'wave:intro': (data) => this.hud.waveIntro(data.wave),
       'wave:clear': (data) => this.hud.waveClear(data.bonus),
+      'boosters:show': (data) => {
+        this.hud.showBoosters(data.cards, (card) => {
+          this.game.events.emit('boosters:pick', { card });
+        });
+      },
       'glitch:start': (data) => this.hud.glitchStart(data.type),
       'glitch:end': () => this.hud.glitchEnd(),
       'pause:changed': (data) => this.hud.pause(data.paused),

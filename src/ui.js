@@ -8,16 +8,18 @@ const CSS = {
   orange: '#ff7a00',
   white: '#ffffff',
   red: '#ff3355',
-  dim: '#7fffff'
+  dim: '#7fffff',
+  cardBg: 0x050814
 };
 
-function style(size, color = CSS.white) {
+function style(size, color = CSS.white, extra = {}) {
   return {
     fontFamily: 'monospace',
     fontSize: `${size}px`,
     color,
     stroke: '#000000',
-    strokeThickness: 3
+    strokeThickness: 3,
+    ...extra
   };
 }
 
@@ -48,13 +50,14 @@ export class Hud {
     this.shieldLabel = scene.add.text(1256, 10, UI.shields, style(9, CSS.cyan))
       .setOrigin(1, 0).setDepth(50);
     this.shields = [];
-    for (let i = 0; i < CFG.PLAYER.shields; i++) {
-      this.shields.push(scene.add.image(1256 - i * 26, 38, 'player')
+    for (let i = 0; i < 6; i++) {
+      this.shields.push(scene.add.image(1256 - i * 24, 38, 'player')
         .setOrigin(0.5)
         .setRotation(-Math.PI / 2)
-        .setScale(0.68)
+        .setScale(0.65)
         .setTint(COLORS.cyan)
-        .setDepth(50));
+        .setDepth(50)
+        .setVisible(i < CFG.PLAYER.shields));
     }
     this.multText = scene.add.text(1256, 54, 'x1', style(14, CSS.magenta))
       .setOrigin(1, 0).setDepth(50);
@@ -62,23 +65,27 @@ export class Hud {
       .setOrigin(1, 0).setDepth(50);
     this.soundText = scene.add.text(24, 70, UI.soundOn, style(9, CSS.dim)).setDepth(50);
 
+    // Boss HP & Info Bar
+    this.bossNameText = scene.add.text(640, 68, '', style(10, CSS.magenta))
+      .setOrigin(0.5, 0).setDepth(50).setVisible(false);
     this.bossBar = scene.add.graphics().setDepth(50).setVisible(false);
 
     this.glitchBanner = scene.add.text(640, 132, '', style(26, CSS.magenta))
       .setOrigin(0.5).setDepth(51).setVisible(false);
-    this.waveBanner = scene.add.text(640, 322, '', style(46, CSS.cyan))
+    this.waveBanner = scene.add.text(640, 240, '', style(46, CSS.cyan))
       .setOrigin(0.5).setDepth(51).setVisible(false);
-    this.clearBanner = scene.add.text(640, 392, '', style(22, CSS.green))
+    this.clearBanner = scene.add.text(640, 290, '', style(22, CSS.green))
       .setOrigin(0.5).setDepth(51).setVisible(false);
     this.lostText = scene.add.text(640, 180, UI.lost, style(16, CSS.red))
       .setOrigin(0.5).setDepth(51).setVisible(false);
     this.restoredText = scene.add.text(640, 164, UI.restored, style(17, CSS.green))
       .setOrigin(0.5).setDepth(51).setVisible(false);
 
-    this.controls = scene.add.text(24, 694, 'WASD MOVE  |  MOUSE AIM  |  CLICK FIRE  |  P PAUSE  |  M MUTE',
+    this.controls = scene.add.text(24, 694, 'MOUSE TO MOVE  |  CLICK TO FIRE  |  P PAUSE  |  M MUTE',
       style(9, CSS.dim)).setDepth(50).setAlpha(0.7);
     scene.tweens.add({ targets: this.controls, alpha: 0, delay: 8000, duration: 1200 });
 
+    // Pause overlay
     this.pauseOverlay = scene.add.rectangle(640, 360, 1280, 720, 0x000000, 0.72)
       .setDepth(100).setVisible(false);
     this.pauseTitle = scene.add.text(640, 316, UI.paused, style(42, CSS.cyan))
@@ -86,6 +93,7 @@ export class Hud {
     this.pauseHint = scene.add.text(640, 372, UI.resume, style(14, CSS.white))
       .setOrigin(0.5).setDepth(101).setVisible(false);
 
+    // Game Over overlay
     this.overOverlay = scene.add.rectangle(640, 360, 1280, 720, 0x000000, 0.94)
       .setDepth(100).setVisible(false);
     this.overTitle = scene.add.text(640, 232, UI.gameOver, style(44, CSS.magenta))
@@ -98,6 +106,102 @@ export class Hud {
       .setOrigin(0.5).setDepth(101).setVisible(false);
     this.overHint = scene.add.text(640, 432, UI.restart, style(14, CSS.white))
       .setOrigin(0.5).setDepth(101).setVisible(false);
+
+    // Booster Cards Modal Container
+    this.createBoosterUI();
+  }
+
+  createBoosterUI() {
+    this.boosterContainer = this.scene.add.container(0, 0).setDepth(110).setVisible(false);
+    this.boosterBg = this.scene.add.rectangle(640, 360, 1280, 720, 0x000000, 0.78);
+    this.boosterTitle = this.scene.add.text(640, 140, 'SELECT REPOSITORY UPGRADE', style(26, CSS.cyan))
+      .setOrigin(0.5);
+    this.boosterSubtitle = this.scene.add.text(640, 175, 'TACTICAL PROTOCOL - HIGH RISK / HIGH REWARD', style(11, CSS.magenta))
+      .setOrigin(0.5);
+
+    this.boosterContainer.add([this.boosterBg, this.boosterTitle, this.boosterSubtitle]);
+
+    this.cardContainers = [];
+    const cardPositions = [320, 640, 960];
+
+    for (let i = 0; i < 3; i++) {
+      const cx = cardPositions[i];
+      const cy = 390;
+      const c = this.scene.add.container(cx, cy);
+
+      const bg = this.scene.add.rectangle(0, 0, 280, 330, CSS.cardBg, 0.95)
+        .setStrokeStyle(2, COLORS.cyan)
+        .setInteractive({ useHandCursor: true });
+
+      const catText = this.scene.add.text(0, -135, '', style(10, CSS.dim))
+        .setOrigin(0.5);
+      const titleText = this.scene.add.text(0, -100, '', style(14, CSS.cyan, { align: 'center', wordWrap: { width: 250 } }))
+        .setOrigin(0.5);
+
+      const divider1 = this.scene.add.line(0, -68, -120, 0, 120, 0, COLORS.cyan, 0.4);
+
+      const buffLabel = this.scene.add.text(-120, -45, '[BUFF]', style(9, CSS.green));
+      const buffText = this.scene.add.text(-120, -28, '', style(11, CSS.green, { wordWrap: { width: 240 } }));
+
+      const divider2 = this.scene.add.line(0, 32, -120, 0, 120, 0, COLORS.danger, 0.4);
+
+      const debuffLabel = this.scene.add.text(-120, 48, '[PENALTY]', style(9, CSS.red));
+      const debuffText = this.scene.add.text(-120, 65, '', style(11, CSS.red, { wordWrap: { width: 240 } }));
+
+      const installPrompt = this.scene.add.text(0, 135, '> CLICK TO INSTALL <', style(10, CSS.white))
+        .setOrigin(0.5);
+
+      c.add([bg, catText, titleText, divider1, buffLabel, buffText, divider2, debuffLabel, debuffText, installPrompt]);
+
+      bg.on('pointerover', () => {
+        bg.setStrokeStyle(3, COLORS.white);
+        c.setScale(1.04);
+      });
+      bg.on('pointerout', () => {
+        bg.setStrokeStyle(2, COLORS.cyan);
+        c.setScale(1.0);
+      });
+
+      this.cardContainers.push({
+        container: c,
+        bg,
+        catText,
+        titleText,
+        buffText,
+        debuffText,
+        cardData: null
+      });
+
+      this.boosterContainer.add(c);
+    }
+  }
+
+  showBoosters(cards, onPick) {
+    for (let i = 0; i < 3; i++) {
+      const card = cards[i];
+      const ui = this.cardContainers[i];
+      if (!card) {
+        ui.container.setVisible(false);
+        continue;
+      }
+      ui.container.setVisible(true).setScale(1);
+      ui.cardData = card;
+      ui.catText.setText(`[${card.category}]`);
+      ui.titleText.setText(card.title);
+      ui.buffText.setText(card.buff);
+      ui.debuffText.setText(card.debuff);
+
+      ui.bg.removeAllListeners('pointerdown');
+      ui.bg.on('pointerdown', () => {
+        this.hideBoosters();
+        onPick(card);
+      });
+    }
+    this.boosterContainer.setVisible(true);
+  }
+
+  hideBoosters() {
+    this.boosterContainer.setVisible(false);
   }
 
   updateHud(data) {
@@ -122,7 +226,7 @@ export class Hud {
       this.multText.setColor(data.mult >= 8 ? CSS.green : data.mult >= 4 ? CSS.orange : CSS.magenta);
       this.last.mult = mult;
     }
-    const available = Math.max(0, CFG.PLAYER.maxBullets - data.bullets);
+    const available = Math.max(0, data.maxBullets - data.bullets);
     const ammo = `AMMO ${available}`;
     if (ammo !== this.last.ammo) {
       this.ammoText.setText(ammo);
@@ -130,21 +234,31 @@ export class Hud {
       this.last.ammo = ammo;
     }
 
+    const maxShields = data.maxShields || CFG.PLAYER.shields;
     for (let i = 0; i < this.shields.length; i++) {
-      const active = i < data.shields;
-      this.shields[i].setAlpha(active ? 1 : 0.16);
-      this.shields[i].setTint(active ? COLORS.cyan : COLORS.danger);
+      if (i < maxShields) {
+        this.shields[i].setVisible(true);
+        const active = i < data.shields;
+        this.shields[i].setAlpha(active ? 1 : 0.16);
+        this.shields[i].setTint(active ? COLORS.cyan : COLORS.danger);
+      } else {
+        this.shields[i].setVisible(false);
+      }
     }
 
     if (data.bossHp > 0) {
+      this.bossNameText.setVisible(true).setText(data.bossName || 'BOSS PROTOCOL');
       this.bossBar.setVisible(true).clear();
-      const w = 400;
+      const w = 460;
       const x = 640 - w / 2;
       this.bossBar.fillStyle(0x220022, 0.9);
-      this.bossBar.fillRect(x, 80, w, 6);
+      this.bossBar.fillRect(x, 82, w, 8);
       this.bossBar.fillStyle(COLORS.magenta, 1);
-      this.bossBar.fillRect(x, 80, w * Math.max(0, data.bossHp / data.bossMax), 6);
+      this.bossBar.fillRect(x, 82, w * Math.max(0, data.bossHp / data.bossMax), 8);
+      this.bossBar.lineStyle(1, COLORS.white, 0.7);
+      this.bossBar.strokeRect(x, 82, w, 8);
     } else {
+      this.bossNameText.setVisible(false);
       this.bossBar.setVisible(false).clear();
     }
   }
@@ -181,11 +295,13 @@ export class Hud {
 
   waveClear(bonus) {
     this.clearBanner.setText(`${UI.waveClear} +${bonus}`).setVisible(true).setAlpha(1);
-    this.scene.time.delayedCall(2800, () => this.clearBanner.setVisible(false));
+    this.scene.time.delayedCall(2400, () => this.clearBanner.setVisible(false));
   }
 
   glitchStart(type) {
-    const text = type === 'invert' ? UI.invert : type === 'overclock' ? UI.overclock : UI.disorient;
+    const isCombined = type && type.includes('+');
+    let text = type === 'invert' ? UI.invert : type === 'overclock' ? UI.overclock : UI.disorient;
+    if (isCombined) text = `GLITCH: COMBO [${type.toUpperCase()}]`;
     this.glitchBanner.setText(text).setVisible(true).setAlpha(1);
     this.scene.tweens.add({
       targets: this.glitchBanner,
@@ -205,11 +321,12 @@ export class Hud {
   sequenceLost() {
     this.lostText.setVisible(true).setAlpha(1);
     this.scene.time.delayedCall(700, () => this.lostText.setVisible(false));
-    this.scene.cameras.main.flash(120, 255, 0, 40);
   }
 
   sequenceHit() {
-    this.scene.cameras.main.flash(100, 0, 255, 80);
+    // Replaced epileptic screen flash with soft animation
+    this.scoreText.setColor(CSS.green);
+    this.scene.time.delayedCall(160, () => this.scoreText.setColor(CSS.white));
   }
 
   pause(paused) {
@@ -220,6 +337,7 @@ export class Hud {
 
   gameOver(data) {
     this.pause(false);
+    this.hideBoosters();
     this.overOverlay.setVisible(true);
     this.overTitle.setVisible(true);
     this.overScore.setText(`${UI.score} ${formatScore(data.score)}`).setVisible(true);
@@ -239,6 +357,7 @@ export class Hud {
     this.glitchBanner.setVisible(false);
     this.restoredText.setVisible(false);
     this.lostText.setVisible(false);
+    this.hideBoosters();
   }
 
   setAudio(muted, available = true) {

@@ -193,4 +193,133 @@ export function createTextures(scene) {
     g.lineStyle(1, COLORS.white, 0.7);
     g.strokeRect(52, 52, 36, 36);
   });
+
+  make(scene, 'obstacle_block', 100, 40, (g) => {
+    g.fillStyle(0x0a1020, 0.85);
+    g.fillRect(2, 2, 96, 36);
+    g.lineStyle(2, COLORS.cyan, 0.9);
+    g.strokeRect(2, 2, 96, 36);
+    g.lineStyle(1, COLORS.white, 0.8);
+    g.lineBetween(6, 6, 94, 6);
+    g.lineBetween(6, 34, 94, 34);
+    g.lineStyle(1, COLORS.magenta, 0.5);
+    for (let x = 12; x < 90; x += 14) {
+      g.lineBetween(x, 6, x + 6, 34);
+    }
+  });
+
+  make(scene, 'pickup_ammo', 24, 24, (g) => {
+    const pts = [[12, 1], [23, 12], [12, 23], [1, 12]];
+    g.fillStyle(0x003322, 0.85);
+    poly(g, pts);
+    g.fillPath();
+    g.lineStyle(2, COLORS.green, 1);
+    poly(g, pts);
+    g.strokePath();
+    g.lineStyle(1.5, COLORS.white, 1);
+    g.lineBetween(12, 5, 12, 19);
+    g.lineBetween(8, 10, 12, 5);
+    g.lineBetween(16, 10, 12, 5);
+  });
+
+  make(scene, 'pickup_shield', 24, 24, (g) => {
+    const pts = [[12, 1], [22, 7], [22, 17], [12, 23], [2, 17], [2, 7]];
+    g.fillStyle(0x002233, 0.85);
+    poly(g, pts);
+    g.fillPath();
+    g.lineStyle(2, COLORS.cyan, 1);
+    poly(g, pts);
+    g.strokePath();
+    g.fillStyle(COLORS.white, 1);
+    g.fillRect(10, 7, 4, 10);
+    g.fillRect(7, 10, 10, 4);
+  });
+
+  make(scene, 'boss_worm_head', 56, 56, (g) => {
+    g.fillStyle(COLORS.orange, 0.35);
+    g.fillCircle(28, 28, 24);
+    g.lineStyle(2.5, COLORS.white, 1);
+    g.strokeCircle(28, 28, 24);
+    g.lineStyle(2, COLORS.orange, 1);
+    g.strokeCircle(28, 28, 16);
+    // Mandibles / Jaws
+    const leftJaw = [[28, 10], [52, 18], [42, 28]];
+    const rightJaw = [[28, 46], [52, 38], [42, 28]];
+    g.lineStyle(2, COLORS.danger, 1);
+    poly(g, leftJaw);
+    g.strokePath();
+    poly(g, rightJaw);
+    g.strokePath();
+    g.fillStyle(COLORS.danger, 1);
+    g.fillCircle(38, 20, 3.5);
+    g.fillCircle(38, 36, 3.5);
+  });
+
+  make(scene, 'boss_worm_body', 44, 44, (g) => {
+    g.fillStyle(0x331100, 0.5);
+    g.fillCircle(22, 22, 18);
+    g.lineStyle(2, COLORS.orange, 1);
+    g.strokeCircle(22, 22, 18);
+    g.lineStyle(1.5, COLORS.yellow, 0.85);
+    g.strokeCircle(22, 22, 11);
+    g.lineStyle(1, COLORS.danger, 0.7);
+    g.lineBetween(4, 22, 40, 22);
+    g.lineBetween(22, 4, 22, 40);
+  });
+
+  make(scene, 'boss_worm_tail', 34, 34, (g) => {
+    const pts = [[30, 17], [4, 6], [10, 17], [4, 28]];
+    g.fillStyle(COLORS.orange, 0.6);
+    poly(g, pts);
+    g.fillPath();
+    g.lineStyle(2, COLORS.white, 1);
+    poly(g, pts);
+    g.strokePath();
+    g.lineStyle(1.5, COLORS.danger, 1);
+    g.lineBetween(10, 17, 32, 17);
+  });
+
+  make(scene, 'boss_dragon_head', 68, 68, (g) => {
+    const pts = [[62, 34], [18, 12], [28, 26], [6, 20], [18, 34], [6, 48], [28, 42], [18, 56]];
+    g.fillStyle(0x330033, 0.65);
+    poly(g, pts);
+    g.fillPath();
+    g.lineStyle(2.5, COLORS.magenta, 1);
+    poly(g, pts);
+    g.strokePath();
+    g.lineStyle(1.5, COLORS.white, 1);
+    g.lineBetween(28, 26, 62, 34);
+    g.lineBetween(28, 42, 62, 34);
+    // Glowing eyes
+    g.fillStyle(COLORS.cyan, 1);
+    g.fillCircle(44, 26, 3.5);
+    g.fillCircle(44, 42, 3.5);
+  });
+
+  make(scene, 'boss_dragon_wing', 60, 60, (g) => {
+    const pts = [[6, 30], [54, 4], [42, 24], [58, 28], [36, 40], [48, 54]];
+    g.fillStyle(0x220033, 0.45);
+    poly(g, pts);
+    g.fillPath();
+    g.lineStyle(2, COLORS.magenta, 0.95);
+    poly(g, pts);
+    g.strokePath();
+    g.lineStyle(1, COLORS.cyan, 0.8);
+    g.lineBetween(6, 30, 42, 24);
+    g.lineBetween(6, 30, 36, 40);
+  });
+
+  make(scene, 'boss_dragon_body', 50, 50, (g) => {
+    const diamond = [[25, 4], [46, 25], [25, 46], [4, 25]];
+    g.fillStyle(0x220022, 0.5);
+    poly(g, diamond);
+    g.fillPath();
+    g.lineStyle(2, COLORS.magenta, 1);
+    poly(g, diamond);
+    g.strokePath();
+    g.lineStyle(1.5, COLORS.cyan, 0.85);
+    g.strokeCircle(25, 25, 10);
+    g.lineStyle(1.5, COLORS.white, 0.9);
+    g.lineBetween(25, 4, 25, 46);
+  });
 }

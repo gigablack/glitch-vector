@@ -3,9 +3,14 @@ import { clamp } from './rules.js';
 
 export class Player {
   constructor(scene) {
+    this.scene = scene;
     this.spr = scene.add.sprite(CFG.PLAYER.x, CFG.PLAYER.y, 'player')
       .setDepth(30)
       .setBlendMode(Phaser.BlendModes.ADD);
+    this.maxShields = CFG.PLAYER.shields;
+    this.speedMult = 1;
+    this.maxBulletsBonus = 0;
+    this.fireCdMult = 1;
     this.reset();
   }
 
@@ -14,34 +19,74 @@ export class Player {
     this.y = CFG.PLAYER.y;
     this.vx = 0;
     this.vy = 0;
-    this.shields = CFG.PLAYER.shields;
+    this.shields = this.maxShields || CFG.PLAYER.shields;
     this.invuln = 0;
     this.fireCd = 0;
     this.dead = false;
     this.spr.setPosition(this.x, this.y)
       .setVisible(true)
       .setAlpha(1)
+      .setScale(1)
       .setRotation(-Math.PI / 2);
   }
 
-  update(dt, input, aimX, aimY) {
+  setModifiers(modifiers = {}) {
+    this.speedMult = modifiers.speedMult || 1;
+    this.maxBulletsBonus = modifiers.maxBulletsBonus || 0;
+    this.fireCdMult = modifiers.fireCdMult || 1;
+    if (modifiers.maxShields && modifiers.maxShields !== this.maxShields) {
+      const diff = modifiers.maxShields - this.maxShields;
+      this.maxShields = modifiers.maxShields;
+      if (diff > 0) this.shields = Math.min(this.maxShields, this.shields + diff);
+    }
+  }
+
+  healShield(amount = 1) {
+    if (this.dead) return false;
+    if (this.shields >= this.maxShields) return false;
+    this.shields = Math.min(this.maxShields, this.shields + amount);
+    return true;
+  }
+
+  update(dt, input, aimX, aimY, obstacles = null, inverted = false) {
     this.fireCd = Math.max(0, this.fireCd - dt * 1000);
     if (this.dead) {
       this.spr.setVisible(false);
       return;
     }
 
-    let ax = input.x;
-    let ay = input.y;
-    const len = Math.hypot(ax, ay);
-    if (len > 0) {
-      ax /= len;
-      ay /= len;
+    // Mouse-only movement direction towards cursor
+    let ax = 0;
+    let ay = 0;
+    const dx = aimX - this.x;
+    const dy = aimY - this.y;
+    const dist = Math.hypot(dx, dy);
+
+    // Deadzone of 8px to prevent jitter under mouse cursor
+    if (dist > 8) {
+      // Smooth acceleration ramp when close to cursor
+      const ramp = Math.min(1, (dist - 8) / 45);
+      ax = (dx / dist) * ramp;
+      ay = (dy / dist) * ramp;
     }
 
-    const targetVx = ax * CFG.PLAYER.speed;
-    const targetVy = ay * CFG.PLAYER.speed;
-    const k = 1 - Math.exp((-dt * 1000) / CFG.PLAYER.tau);
+    // Keyboard fallback / hybrid additive if player presses keys
+    if (input && (input.x !== 0 || input.y !== 0)) {
+      const kLen = Math.hypot(input.x, input.y) || 1;
+      ax = input.x / kLen;
+      ay = input.y / kLen;
+    }
+
+    if (inverted) {
+      ax = -ax;
+      ay = -ay;
+    }
+
+    const currentSpeed = CFG.PLAYER.speed * this.speedMult;
+    const targetVx = ax * currentSpeed;
+    const targetVy = ay * currentSpeed;
+    const tau = CFG.PLAYER.tau * (this.speedMult > 1.2 ? 1.3 : 1);
+    const k = 1 - Math.exp((-dt * 1000) / tau);
     this.vx += (targetVx - this.vx) * k;
     this.vy += (targetVy - this.vy) * k;
 
@@ -69,9 +114,15 @@ export class Player {
       this.vy = Math.min(0, this.vy);
     }
 
-    this.resolveCube();
+    // Resolve collision against dynamic obstacles or default cube
+    if (obstacles && obstacles.resolvePlayer) {
+      obstacles.resolvePlayer(this);
+    } else {
+      this.resolveCube(CFG.CUBE);
+    }
 
     this.spr.setPosition(this.x, this.y);
+    // Ship always aims directly at the mouse cursor
     this.spr.setRotation(Math.atan2(aimY - this.y, aimX - this.x));
 
     if (this.invuln > 0) {
@@ -82,15 +133,15 @@ export class Player {
     }
   }
 
-  resolveCube() {
+  resolveCube(cube) {
+    if (!cube) return;
     const r = CFG.PLAYER.r;
-    const cube = CFG.CUBE;
     const right = cube.x + cube.w;
     const bottom = cube.y + cube.h;
     const closestX = clamp(this.x, cube.x, right);
     const closestY = clamp(this.y, cube.y, bottom);
-    let dx = this.x - closestX;
-    let dy = this.y - closestY;
+    const dx = this.x - closestX;
+    const dy = this.y - closestY;
     const d2 = dx * dx + dy * dy;
 
     if (d2 > r * r) return;
@@ -143,11 +194,12 @@ export class Player {
   }
 
   canFire(activeBullets) {
-    return !this.dead && this.fireCd <= 0 && activeBullets < CFG.PLAYER.maxBullets;
+    const maxB = CFG.PLAYER.maxBullets + this.maxBulletsBonus;
+    return !this.dead && this.fireCd <= 0 && activeBullets < maxB;
   }
 
   markFired() {
-    this.fireCd = CFG.PLAYER.fireCd;
+    this.fireCd = CFG.PLAYER.fireCd * this.fireCdMult;
   }
 
   get muzzleX() {

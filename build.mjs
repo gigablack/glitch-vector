@@ -11,7 +11,7 @@ const outDir = path.join(root, 'dist');
 const outPath = path.join(outDir, 'index.html');
 const PHASER_TAG = '<script src="https://cdn.jsdelivr.net/npm/phaser@3.70.0/dist/phaser.min.js"></script>';
 const DEV_TAG = '<script type="module" src="./src/main.js"></script>';
-const LIMIT = 50000;
+const LIMIT = 100000;
 
 const result = await build({
   entryPoints: [entry],

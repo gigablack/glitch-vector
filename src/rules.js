@@ -41,8 +41,9 @@ export function unlockedTypes(wave) {
 }
 
 export function buildWave(wave, rng) {
-  const boss = wave % 5 === 0;
-  const total = boss ? Math.floor(waveCount(wave) / 2) : waveCount(wave);
+  // Boss appears starting from Level 1, every 2 levels (1, 3, 5, 7...)
+  const boss = wave % 2 === 1;
+  const total = boss ? Math.max(2, Math.floor(waveCount(wave) / 2)) : waveCount(wave);
   const unlocked = unlockedTypes(wave);
   const types = [];
   const guarantee = Math.min(unlocked.length, total);

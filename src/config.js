@@ -63,7 +63,7 @@ export const POOLS = {
   splitter: 24,
   sniper: 4,
   mini: 48,
-  playerBullets: 3,
+  playerBullets: 12,
   enemyBullets: 80,
   particles: 300,
   texts: 24

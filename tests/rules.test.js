@@ -66,11 +66,12 @@ test('oleadas: cantidad y desbloqueos', () => {
 test('oleadas: composición normal y de jefe', () => {
   const rng = mulberry32(42);
   const wave1 = buildWave(1, rng);
-  assert.equal(wave1.boss, false);
-  assert.equal(wave1.types.length, 6);
+  assert.equal(wave1.boss, true);
+  assert.equal(wave1.types.length, 3);
   assert.deepEqual([...new Set(wave1.types)], ['bouncer']);
 
   const wave4 = buildWave(4, rng);
+  assert.equal(wave4.boss, false);
   assert.equal(wave4.types.length, 12);
   assert.ok(wave4.types.includes('bouncer'));
   assert.ok(wave4.types.includes('chaser'));
@@ -82,7 +83,8 @@ test('oleadas: composición normal y de jefe', () => {
   assert.ok(wave5.types.includes('chaser'));
 
   const wave13 = buildWave(13, rng);
-  assert.equal(wave13.types.length, 30);
+  assert.equal(wave13.boss, true);
+  assert.equal(wave13.types.length, 15);
   assert.ok(wave13.types.includes('sniper'));
   assert.equal(wave13.types.includes('boss'), false);
 });
