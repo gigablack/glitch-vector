@@ -5,7 +5,7 @@
   "type": "module",
   "description": "GLITCH//VECTOR - arena twin-stick shooter generativo",
   "scripts": {
-    "dev": "python3 -m http.server 8080",
+    "dev": "node server.mjs",
     "check": "node -e \"import('node:fs').then(fs => fs.readdirSync('src').filter(f => f.endsWith('.js')).forEach(f => import('node:child_process').then(cp => cp.execSync('node --check src/' + f))))\"",
     "test": "node --test tests/*.test.js",
     "build": "node build.mjs",
