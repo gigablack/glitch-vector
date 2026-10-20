@@ -191,3 +191,42 @@ test('Starter Boost: Nivel 1 inicia con selección de booster antes del primer j
   assert.equal(wave, 1, 'Debe transicionar a oleada 1 (Jefe 1)');
   assert.ok(bm.picked.includes(pickedCard.id), 'El booster inicial debe quedar registrado en las estadísticas de partida');
 });
+
+test('Controles: teclado gobierna el desplazamiento y raton gobierna el giro', async () => {
+  const { Player } = await import('../src/player.js');
+  globalThis.Phaser = { BlendModes: { ADD: 1, SCREEN: 2 } };
+  const mockSprite = () => ({
+    x: 0, y: 0, rotation: 0,
+    setDepth() { return this; },
+    setBlendMode() { return this; },
+    setVisible() { return this; },
+    setTexture() { return this; },
+    setPosition(x, y) { this.x = x; this.y = y; return this; },
+    setRotation(r) { this.rotation = r; return this; },
+    setAlpha() { return this; },
+    setScale() { return this; },
+    clearTint() { return this; },
+    setTint() { return this; }
+  });
+  const mockScene = {
+    add: {
+      sprite: () => mockSprite()
+    }
+  };
+  const player = new Player(mockScene);
+  player.reset();
+
+  // Test 1: Ratón a la derecha, sin teclas de movimiento presionadas (input = {x:0, y:0})
+  player.update(0.016, { x: 0, y: 0 }, player.x + 200, player.y);
+  assert.equal(player.vx, 0, 'Sin teclas, la nave no debe desplazarse hacia el ratón');
+  assert.equal(player.vy, 0, 'Sin teclas, la nave no debe desplazarse hacia el ratón');
+  assert.equal(player.spr.rotation, 0, 'El ratón a la derecha debe rotar la nave a ángulo 0 rad');
+
+  // Test 2: Pulsar tecla W (arriba: y=-1), ratón apuntando a coordenadas fijas de mundo
+  const targetX = 600;
+  const targetY = 300;
+  player.update(0.016, { x: 0, y: -1 }, targetX, targetY);
+  assert.ok(player.vy < 0, 'La nave debe acelerar hacia arriba por la tecla W');
+  const expectedRot = Math.atan2(targetY - player.y, targetX - player.x);
+  assert.ok(Math.abs(player.spr.rotation - expectedRot) < 0.0001, 'La orientación debe apuntar exactamente a las coordenadas del ratón');
+});

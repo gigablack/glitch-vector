@@ -123,25 +123,13 @@ export class Player {
       return;
     }
 
-    // Mouse-only movement direction towards cursor
-    let ax = 0;
-    let ay = 0;
-    const dx = aimX - this.x;
-    const dy = aimY - this.y;
-    const dist = Math.hypot(dx, dy);
-
-    // Deadzone of 8px to prevent jitter under mouse cursor
-    if (dist > 8) {
-      const ramp = Math.min(1, (dist - 8) / 45);
-      ax = (dx / dist) * ramp;
-      ay = (dy / dist) * ramp;
-    }
-
-    // Keyboard fallback if pressed
-    if (input && (input.x !== 0 || input.y !== 0)) {
-      const kLen = Math.hypot(input.x, input.y) || 1;
-      ax = input.x / kLen;
-      ay = input.y / kLen;
+    // Keyboard movement (WASD / Arrow keys)
+    let ax = input ? input.x : 0;
+    let ay = input ? input.y : 0;
+    const len = Math.hypot(ax, ay);
+    if (len > 1) {
+      ax /= len;
+      ay /= len;
     }
 
     if (inverted) {

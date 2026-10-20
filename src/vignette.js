@@ -9,9 +9,9 @@ export class VignetteSystem {
     this.lowHealth = false;
     this.pulseTime = 0;
 
-    // Graphics overlay layer (between gameplay and HUD)
+    // Graphics overlay layer (between arena/enemies and player/HUD)
     this.graphics = scene.add.graphics()
-      .setDepth(92)
+      .setDepth(26)
       .setScrollFactor(0);
 
     // Vignette border canvas texture
@@ -108,38 +108,77 @@ export class VignetteSystem {
     const px = player.x;
     const py = player.y;
     const rot = player.spr.rotation;
-    const coneAngle = (95 * Math.PI) / 180;
-    const coneDist = 720;
+    // Frontal vision cone: wide tactical sector (120 degrees)
+    const coneAngle = (120 * Math.PI) / 180;
     const half = coneAngle / 2;
+    const innerR = 75; // Proximity safety bubble: ship, halo & wings 100% visible
+    const outerR = 1500; // Far exceeds screen diagonal from any player position
 
-    this.graphics.fillStyle(0x020205, 0.94);
-    // Draw full screen mask then cut out cone with clear or sector
-    // We can draw a polygon around the vision cone
-    const a1 = rot - half;
-    const a2 = rot + half;
+    // Blind sector spans the rear/flanks outside the frontal cone:
+    const aStart = rot + half;
+    const aEnd = rot + Math.PI * 2 - half;
+    const sweep = aEnd - aStart; // ~240 degrees of darkness
+    const steps = 32;
 
-    const p1x = px + Math.cos(a1) * coneDist;
-    const p1y = py + Math.sin(a1) * coneDist;
-    const p2x = px + Math.cos(a2) * coneDist;
-    const p2y = py + Math.sin(a2) * coneDist;
+    const points = [];
+    // 1. Outer perimeter arc covering the arena
+    for (let i = 0; i <= steps; i++) {
+      const a = aStart + (sweep * i) / steps;
+      points.push({
+        x: px + Math.cos(a) * outerR,
+        y: py + Math.sin(a) * outerR
+      });
+    }
+    // 2. Inner safety perimeter arc hugging the proximity bubble (in reverse)
+    for (let i = steps; i >= 0; i--) {
+      const a = aStart + (sweep * i) / steps;
+      points.push({
+        x: px + Math.cos(a) * innerR,
+        y: py + Math.sin(a) * innerR
+      });
+    }
 
-    // Outer polygon surrounding screen except the forward cone
-    // To keep it simple and performant, draw black overlay with arc cutout or 4 perimeter quads
+    // Shroud rear blind zone in cyber darkness
+    this.graphics.fillStyle(0x020308, 0.94);
     this.graphics.beginPath();
-    this.graphics.moveTo(0, 0);
-    this.graphics.lineTo(CFG.W, 0);
-    this.graphics.lineTo(CFG.W, CFG.H);
-    this.graphics.lineTo(0, CFG.H);
+    this.graphics.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+      this.graphics.lineTo(points[i].x, points[i].y);
+    }
     this.graphics.closePath();
     this.graphics.fillPath();
 
-    // Subtle flashlight illumination in cone
-    this.graphics.fillStyle(0x000000, 1);
-    // Erase or light up: Phaser graphics doesn't do blend ERASE out of the box easily,
-    // so we render the sector as a soft cyan ambient spotlight
-    this.graphics.lineStyle(2, COLORS.cyan, 0.25);
-    this.graphics.lineBetween(px, py, p1x, p1y);
-    this.graphics.lineBetween(px, py, p2x, p2y);
+    // Tactical boundary rays along the edges of the frontal vision cone
+    const rayDist = 900;
+    const r1 = rot - half;
+    const r2 = rot + half;
+    this.graphics.lineStyle(1.5, COLORS.cyan, 0.45);
+    this.graphics.lineBetween(
+      px + Math.cos(r1) * innerR,
+      py + Math.sin(r1) * innerR,
+      px + Math.cos(r1) * rayDist,
+      py + Math.sin(r1) * rayDist
+    );
+    this.graphics.lineBetween(
+      px + Math.cos(r2) * innerR,
+      py + Math.sin(r2) * innerR,
+      px + Math.cos(r2) * rayDist,
+      py + Math.sin(r2) * rayDist
+    );
+
+    // Inner proximity boundary arc in subtle warning color
+    this.graphics.lineStyle(1.5, 0xff0055, 0.35);
+    this.graphics.beginPath();
+    this.graphics.arc(px, py, innerR, aStart, aEnd, false);
+    this.graphics.strokePath();
+
+    // Soft frontal illumination ambiance
+    this.graphics.fillStyle(0x00f0ff, 0.035);
+    this.graphics.beginPath();
+    this.graphics.moveTo(px, py);
+    this.graphics.arc(px, py, 600, r1, r2, false);
+    this.graphics.closePath();
+    this.graphics.fillPath();
   }
 
   clear() {

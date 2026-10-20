@@ -491,10 +491,6 @@ export class GameScene extends Phaser.Scene {
     if (k.D.isDown || k.RIGHT.isDown) x += 1;
     if (k.W.isDown || k.UP.isDown) y -= 1;
     if (k.S.isDown || k.DOWN.isDown) y += 1;
-    if (this.glitch.invert) {
-      x = -x;
-      y = -y;
-    }
     this.inputState.x = x;
     this.inputState.y = y;
     return this.inputState;
