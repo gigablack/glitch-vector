@@ -230,3 +230,60 @@ test('Controles: teclado gobierna el desplazamiento y raton gobierna el giro', a
   const expectedRot = Math.atan2(targetY - player.y, targetX - player.x);
   assert.ok(Math.abs(player.spr.rotation - expectedRot) < 0.0001, 'La orientación debe apuntar exactamente a las coordenadas del ratón');
 });
+
+test('Spawn de Jefes: aparecen en el extremo opuesto al jugador', async () => {
+  const { getOppositeExtreme, BossController } = await import('../src/bosses.js');
+
+  // Caso 1: Jugador en cuadrante inferior-derecho (x=900, y=600)
+  const opp1 = getOppositeExtreme({ x: 900, y: 600 });
+  assert.equal(opp1.oppTop, true, 'Si jugador esta abajo, el extremo opuesto debe ser arriba');
+  assert.equal(opp1.oppLeft, true, 'Si jugador esta a la derecha, el extremo opuesto debe ser a la izquierda');
+  assert.ok(opp1.oppY < 300, 'oppY debe estar en el sector superior');
+  assert.ok(opp1.oppX < 500, 'oppX debe estar en el sector izquierdo');
+
+  // Caso 2: Jugador en cuadrante superior-izquierdo (x=300, y=150)
+  const opp2 = getOppositeExtreme({ x: 300, y: 150 });
+  assert.equal(opp2.oppTop, false, 'Si jugador esta arriba, el extremo opuesto debe ser abajo');
+  assert.equal(opp2.oppLeft, false, 'Si jugador esta a la izquierda, el extremo opuesto debe ser a la derecha');
+  assert.ok(opp2.oppY > 500, 'oppY debe estar en el sector inferior');
+  assert.ok(opp2.oppX > 800, 'oppX debe estar en el sector derecho');
+
+  // Instanciación de los 3 arquetipos de jefe con mock scene
+  const mockSprite = () => ({
+    x: 0, y: 0,
+    setDepth() { return this; },
+    setBlendMode() { return this; },
+    setVisible() { return this; },
+    setScale() { return this; },
+    setFlipY() { return this; },
+    setPosition(x, y) { this.x = x; this.y = y; return this; },
+    setRotation() { return this; },
+    setTint() { return this; },
+    clearTint() { return this; },
+    destroy() { }
+  });
+  const mockScene = {
+    add: { sprite: () => mockSprite() },
+    tweens: { killTweensOf() { } },
+    events: { emit() { } }
+  };
+  const ctrl = new BossController(mockScene, () => 0.5);
+
+  // Jugador abajo-centro
+  const player = { x: 640, y: 600 };
+
+  // Jefe 1 (CoreBoss, ola 1)
+  const boss1 = ctrl.spawnBoss(1, 1000, 1, player);
+  assert.ok(boss1.spr.y < 350, 'CoreBoss debe aparecer en el extremo superior opuesto');
+  assert.ok(Math.hypot(boss1.spr.x - player.x, boss1.spr.y - player.y) > 300, 'CoreBoss debe iniciar a distancia segura del jugador');
+
+  // Jefe 2 (WormBoss, ola 3)
+  const boss2 = ctrl.spawnBoss(3, 1000, 1, player);
+  assert.ok(boss2.y < 200, 'WormBoss debe entrar desde el extremo superior');
+  assert.ok(Math.hypot(boss2.x - player.x, boss2.y - player.y) > 350, 'WormBoss debe iniciar a distancia segura del jugador');
+
+  // Jefe 3 (DragonBoss, ola 5)
+  const boss3 = ctrl.spawnBoss(5, 1000, 1, player);
+  assert.ok(boss3.y < 350, 'DragonBoss debe volar en el extremo superior');
+  assert.ok(Math.hypot(boss3.x - player.x, boss3.y - player.y) > 350, 'DragonBoss debe iniciar a distancia segura del jugador');
+});

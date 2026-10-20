@@ -1,5 +1,28 @@
 import { CFG, COLORS, ENEMY_DEFS } from './config.js';
 
+export function getOppositeExtreme(player) {
+  const cx = 640;
+  const cy = 396;
+  const px = (player && typeof player.x === 'number') ? player.x : cx;
+  const py = (player && typeof player.y === 'number') ? player.y : (cy + 200);
+
+  const isRight = px >= cx;
+  const isBottom = py >= cy;
+
+  return {
+    px,
+    py,
+    cx,
+    cy,
+    isRight,
+    isBottom,
+    oppLeft: isRight,
+    oppTop: isBottom,
+    oppX: isRight ? (CFG.PLAY.x + 180) : (CFG.PLAY.x + CFG.PLAY.w - 180),
+    oppY: isBottom ? (CFG.PLAY.y + 110) : (CFG.PLAY.y + CFG.PLAY.h - 110)
+  };
+}
+
 export class BossController {
   constructor(scene, rng) {
     this.scene = scene;
@@ -7,7 +30,7 @@ export class BossController {
     this.activeBoss = null;
   }
 
-  spawnBoss(wave, now, hpMult = 1) {
+  spawnBoss(wave, now, hpMult = 1, player = null) {
     if (this.activeBoss) this.killBoss();
 
     // Determine boss archetype based on wave
@@ -17,11 +40,11 @@ export class BossController {
     const bossIndex = Math.floor(((wave - 1) / 2)) % 3;
 
     if (bossIndex === 0) {
-      this.activeBoss = new CoreBoss(this.scene, this.rng, wave, now, hpMult);
+      this.activeBoss = new CoreBoss(this.scene, this.rng, wave, now, hpMult, player);
     } else if (bossIndex === 1) {
-      this.activeBoss = new WormBoss(this.scene, this.rng, wave, now, hpMult);
+      this.activeBoss = new WormBoss(this.scene, this.rng, wave, now, hpMult, player);
     } else {
-      this.activeBoss = new DragonBoss(this.scene, this.rng, wave, now, hpMult);
+      this.activeBoss = new DragonBoss(this.scene, this.rng, wave, now, hpMult, player);
     }
 
     return this.activeBoss;
@@ -63,7 +86,7 @@ export class BossController {
 // BOSS 1: CORE SPHERE (Esfera Hexagonal Orbital)
 // ---------------------------------------------------------------------------
 class CoreBoss {
-  constructor(scene, rng, wave, now, hpMult = 1) {
+  constructor(scene, rng, wave, now, hpMult = 1, player = null) {
     this.scene = scene;
     this.rng = rng;
     this.type = 'core';
@@ -80,12 +103,28 @@ class CoreBoss {
     this.pending = null;
     this.flashUntil = 0;
 
-    this.spr = scene.add.sprite(640, 200, 'boss')
+    const opp = getOppositeExtreme(player);
+    this.orbitCenterX = opp.cx;
+    this.orbitCenterY = opp.cy;
+    this.orbitRadiusX = 380;
+    this.orbitRadiusY = 190;
+
+    // Base phase: when player is at bottom (oppTop), start at PI (cos = -1) so boss is at top
+    // when player is at top (!oppTop), start at 0 (cos = +1) so boss is at bottom
+    const baseAngle = opp.oppTop ? Math.PI : 0;
+    const horizShift = opp.oppLeft ? -0.45 : 0.45;
+    this.baseAngle = baseAngle + horizShift;
+
+    const initX = this.orbitCenterX + Math.sin(this.baseAngle) * this.orbitRadiusX;
+    const initY = this.orbitCenterY + Math.cos(this.baseAngle) * this.orbitRadiusY;
+
+    this.spr = scene.add.sprite(initX, initY, 'boss')
       .setDepth(17)
       .setBlendMode(Phaser.BlendModes.ADD);
   }
 
   update(dt, now, player, speedMult, shoot, glitchDirector) {
+    const orbitSpeed = this.phase === 2 ? 1.4 : 0.95;
     this.time += dt * speedMult;
     const newPhase = this.hp <= this.maxHp * 0.45 ? 2 : 1;
     if (newPhase > this.phase) {
@@ -95,10 +134,10 @@ class CoreBoss {
       }
     }
 
-    // Wide dynamic orbit across the screen (never stationary)
-    const orbitSpeed = this.phase === 2 ? 1.4 : 0.95;
-    this.spr.x = 640 + Math.sin(this.time * orbitSpeed) * 380;
-    this.spr.y = 380 + Math.cos(this.time * orbitSpeed * 1.3) * 190;
+    // Wide dynamic orbit across the screen (starts from opposite extreme)
+    const currentAngle = this.baseAngle + this.time * orbitSpeed;
+    this.spr.x = this.orbitCenterX + Math.sin(currentAngle) * this.orbitRadiusX;
+    this.spr.y = this.orbitCenterY + Math.cos(currentAngle) * this.orbitRadiusY;
     this.spr.rotation += dt * (this.phase === 2 ? 3.0 : 1.5);
 
     if (this.flashUntil && now >= this.flashUntil) {
@@ -173,7 +212,7 @@ class CoreBoss {
 // BOSS 2: WORMDUNE (Gusano de Arena Vectorial Segmentado)
 // ---------------------------------------------------------------------------
 class WormBoss {
-  constructor(scene, rng, wave, now, hpMult = 1) {
+  constructor(scene, rng, wave, now, hpMult = 1, player = null) {
     this.scene = scene;
     this.rng = rng;
     this.type = 'worm';
@@ -188,13 +227,22 @@ class WormBoss {
     this.flashUntil = 0;
     this.attackAt = now + 1600;
 
-    // Movement kinematics
-    this.x = 640;
-    this.y = -100;
-    this.targetX = 640;
-    this.targetY = 400;
+    const opp = getOppositeExtreme(player);
+    // Worm enters from the perimeter edge opposite to player
+    if (opp.oppTop) {
+      this.x = opp.oppX;
+      this.y = CFG.PLAY.y - 120;
+      this.targetX = opp.px;
+      this.targetY = CFG.PLAY.y + 180;
+    } else {
+      this.x = opp.oppX;
+      this.y = CFG.PLAY.y + CFG.PLAY.h + 120;
+      this.targetX = opp.px;
+      this.targetY = CFG.PLAY.y + CFG.PLAY.h - 180;
+    }
+
     this.speed = 220;
-    this.heading = Math.PI / 2;
+    this.heading = Math.atan2(this.targetY - this.y, this.targetX - this.x);
 
     // Segments chain (head + 10 body + 1 tail)
     this.numSegments = 10;
@@ -352,7 +400,7 @@ class WormBoss {
 // BOSS 3: CYBERDRAGON (Dragón Vectorial con Alas y Aliento de Plasma)
 // ---------------------------------------------------------------------------
 class DragonBoss {
-  constructor(scene, rng, wave, now, hpMult = 1) {
+  constructor(scene, rng, wave, now, hpMult = 1, player = null) {
     this.scene = scene;
     this.rng = rng;
     this.type = 'dragon';
@@ -369,8 +417,12 @@ class DragonBoss {
     this.diveTimer = now + 7000;
     this.isDiving = false;
 
-    this.x = 640;
-    this.y = 160;
+    const opp = getOppositeExtreme(player);
+    this.baseY = opp.oppTop ? (CFG.PLAY.y + 130) : (CFG.PLAY.y + CFG.PLAY.h - 130);
+    this.phaseOffset = opp.oppLeft ? Math.PI : 0;
+
+    this.x = opp.oppX;
+    this.y = this.baseY;
     this.vx = 0;
     this.vy = 0;
 
@@ -405,16 +457,18 @@ class DragonBoss {
     if (this.isDiving) {
       this.x += this.vx * dt;
       this.y += this.vy * dt;
-      if (this.y > CFG.PLAY.y + CFG.PLAY.h + 80 || this.x < CFG.PLAY.x - 80 || this.x > CFG.PLAY.x + CFG.PLAY.w + 80) {
+      if (this.y > CFG.PLAY.y + CFG.PLAY.h + 80 || this.y < CFG.PLAY.y - 80 || this.x < CFG.PLAY.x - 80 || this.x > CFG.PLAY.x + CFG.PLAY.w + 80) {
         this.isDiving = false;
-        this.x = 640;
-        this.y = 120;
+        const opp = getOppositeExtreme(player);
+        this.x = opp.oppX;
+        this.y = opp.oppTop ? (CFG.PLAY.y + 130) : (CFG.PLAY.y + CFG.PLAY.h - 130);
+        this.baseY = this.y;
         this.diveTimer = now + 9000;
       }
     } else {
       const freq = this.phase === 3 ? 1.4 : 1.0;
-      const targetX = 640 + Math.sin(this.time * freq) * 360;
-      const targetY = 260 + Math.sin(this.time * freq * 2) * 140;
+      const targetX = 640 + Math.sin(this.time * freq + this.phaseOffset) * 360;
+      const targetY = this.baseY + Math.sin(this.time * freq * 2) * 110;
       this.x += (targetX - this.x) * Math.min(1, dt * 4);
       this.y += (targetY - this.y) * Math.min(1, dt * 4);
 

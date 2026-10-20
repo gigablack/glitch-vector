@@ -445,7 +445,7 @@ export class GameScene extends Phaser.Scene {
         this.phase = 'active';
         this.spawnAccum = 0;
         if (this.wavePlan.boss) {
-          this.bosses.spawnBoss(this.wave, time, this.boosters.stats.bossHpMult);
+          this.bosses.spawnBoss(this.wave, time, this.boosters.stats.bossHpMult, this.player);
           this.audio.sfx('boss');
           this.fx.shake(0.008, 300);
         }
